@@ -181,7 +181,7 @@ export function check(root: Node, _source: string, index?: NodeIndex): CheckHit[
     if (!hasKnownEvidence(expression)) return;
     hits.push({
       node: expression,
-      message: `The explicit ${target.kind} type on ${subject} discards known type evidence. Keep inference, validate with \`satisfies\`, or use a named owner contract.`,
+      message: `The explicit ${target.kind} type on ${subject} throws away the type the value already has. Delete the annotation and keep inference, check it with \`satisfies\`, or annotate a named domain type; another open type is the same defect.`,
     });
   };
   const targetOf = (type: Node | null): WideningTarget | null => (type ? classifyWideningTarget(type, env) : null);
@@ -223,7 +223,7 @@ export function check(root: Node, _source: string, index?: NodeIndex): CheckHit[
     if (!callArgumentEvidence(argument, env, new Set())) continue;
     hits.push({
       node: argument,
-      message: `The explicit unknown type on argument for parameter \`${functionParameterBindingName(parameter.childForFieldName('pattern')!)}\` of \`${functionName(owner)}\` discards known type evidence. Keep inference, validate with \`satisfies\`, or use a named owner contract.`,
+      message: `The explicit unknown type on argument for parameter \`${functionParameterBindingName(parameter.childForFieldName('pattern')!)}\` of \`${functionName(owner)}\` throws away the type the value already has. Delete the annotation and keep inference, check it with \`satisfies\`, or annotate a named domain type; another open type is the same defect.`,
     });
   }
   for (const node of idx.byType('return_statement')) {

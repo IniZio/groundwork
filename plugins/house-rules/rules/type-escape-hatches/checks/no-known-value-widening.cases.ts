@@ -1,7 +1,7 @@
 import type { RuleCases } from '../../../src/engine/types.js';
 
 const P = 'type Command = () => void; const startCommand = () => {};';
-const msg = (subject: string, target: string) => [{ message: `[no-known-value-widening] The explicit ${target} type on ${subject} discards known type evidence. Keep inference, validate with \`satisfies\`, or use a named owner contract.` }];
+const msg = (subject: string, target: string) => [{ message: `[no-known-value-widening] The explicit ${target} type on ${subject} throws away the type the value already has. Delete the annotation and keep inference, check it with \`satisfies\`, or annotate a named domain type; another open type is the same defect.` }];
 
 export const cases: RuleCases = {
   valid: [

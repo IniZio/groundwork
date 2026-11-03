@@ -1,7 +1,7 @@
 import type { RuleCases } from '../../../src/engine/types.js';
 
 const message = (name: string) =>
-  `[no-unknown-type-aliases] Type alias \`${name}\` hides \`unknown\`. Keep \`unknown\` explicit at the parsing boundary or on an allowed \`cause\` field; otherwise use the parsed owner type.`;
+  `[no-unknown-type-aliases] Type alias \`${name}\` hides \`unknown\` behind a name that looks like a contract. Write \`unknown\` only where the parse happens or on a \`cause\` field, and elsewhere use the type the parser returns; a new name does not parse the value.`;
 const one = (name: string) => [{ message: message(name) }];
 
 export const cases: RuleCases = {

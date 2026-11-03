@@ -37,7 +37,7 @@ function visit(node: Node, hits: CheckHit[]): void {
       if (EXEMPT_NAMES.has(name) || name === guarded) continue;
       hits.push({
         node: annotation,
-        message: `Parameter \`${name}\` leaves input unparsed. Accept a named domain type; run the expected schema or parser at the I/O boundary before calling this function.`,
+        message: `Parameter \`${name}\` leaves input unparsed. Accept a named domain type and parse at the I/O boundary with the schema validator this project uses (ajv, zod, valibot) before calling this function; \`typeof\` checks in the body are not a parse.`,
       });
     }
   }

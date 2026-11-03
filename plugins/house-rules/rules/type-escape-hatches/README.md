@@ -1415,7 +1415,7 @@ const value = input as unknown as User;
 ```
 
 **Expected findings:**
-- [no-chained-type-assertions] This assertion chain discards type evidence. Keep the original precise type, or parse untrusted input at its boundary before narrowing it.
+- [no-chained-type-assertions] This assertion chain forces a type the compiler cannot check. Keep the original precise type, or parse untrusted input with the schema validator this project uses (ajv, zod, valibot) so it returns the target type; splitting the chain across bindings is the same defect.
 
 ### [no-chained-type-assertions] parenthesized chain
 
@@ -1425,7 +1425,7 @@ const value = (input as unknown) as User;
 ```
 
 **Expected findings:**
-- [no-chained-type-assertions] This assertion chain discards type evidence. Keep the original precise type, or parse untrusted input at its boundary before narrowing it.
+- [no-chained-type-assertions] This assertion chain forces a type the compiler cannot check. Keep the original precise type, or parse untrusted input with the schema validator this project uses (ajv, zod, valibot) so it returns the target type; splitting the chain across bindings is the same defect.
 
 ### [no-chained-type-assertions] angle-bracket chain
 
@@ -1435,7 +1435,7 @@ const value = <User>(<unknown>input);
 ```
 
 **Expected findings:**
-- [no-chained-type-assertions] This assertion chain discards type evidence. Keep the original precise type, or parse untrusted input at its boundary before narrowing it.
+- [no-chained-type-assertions] This assertion chain forces a type the compiler cannot check. Keep the original precise type, or parse untrusted input with the schema validator this project uses (ajv, zod, valibot) so it returns the target type; splitting the chain across bindings is the same defect.
 
 ### [no-chained-type-assertions] mixed const chain
 
@@ -1445,7 +1445,7 @@ const value = ({ id: 1 } as const) as User;
 ```
 
 **Expected findings:**
-- [no-chained-type-assertions] This assertion chain discards type evidence. Keep the original precise type, or parse untrusted input at its boundary before narrowing it.
+- [no-chained-type-assertions] This assertion chain forces a type the compiler cannot check. Keep the original precise type, or parse untrusted input with the schema validator this project uses (ajv, zod, valibot) so it returns the target type; splitting the chain across bindings is the same defect.
 
 ### [no-chained-type-assertions] three links report once
 
@@ -1455,7 +1455,7 @@ const value = input as unknown as object as User;
 ```
 
 **Expected findings:**
-- [no-chained-type-assertions] This assertion chain discards type evidence. Keep the original precise type, or parse untrusted input at its boundary before narrowing it.
+- [no-chained-type-assertions] This assertion chain forces a type the compiler cannot check. Keep the original precise type, or parse untrusted input with the schema validator this project uses (ajv, zod, valibot) so it returns the target type; splitting the chain across bindings is the same defect.
 
 ### [no-chained-type-assertions] doubly parenthesized chain reports once
 
@@ -1465,7 +1465,7 @@ const value = ((input as unknown)) as User;
 ```
 
 **Expected findings:**
-- [no-chained-type-assertions] This assertion chain discards type evidence. Keep the original precise type, or parse untrusted input at its boundary before narrowing it.
+- [no-chained-type-assertions] This assertion chain forces a type the compiler cannot check. Keep the original precise type, or parse untrusted input with the schema validator this project uses (ajv, zod, valibot) so it returns the target type; splitting the chain across bindings is the same defect.
 
 ### [no-chained-type-assertions] parenthesized inner chain reports once
 
@@ -1475,7 +1475,7 @@ const value = ((input as unknown) as object) as User;
 ```
 
 **Expected findings:**
-- [no-chained-type-assertions] This assertion chain discards type evidence. Keep the original precise type, or parse untrusted input at its boundary before narrowing it.
+- [no-chained-type-assertions] This assertion chain forces a type the compiler cannot check. Keep the original precise type, or parse untrusted input with the schema validator this project uses (ajv, zod, valibot) so it returns the target type; splitting the chain across bindings is the same defect.
 
 ### [no-chained-type-assertions] doubly parenthesized inner chain reports once
 
@@ -1485,7 +1485,7 @@ const value = (((input as unknown) as object)) as User;
 ```
 
 **Expected findings:**
-- [no-chained-type-assertions] This assertion chain discards type evidence. Keep the original precise type, or parse untrusted input at its boundary before narrowing it.
+- [no-chained-type-assertions] This assertion chain forces a type the compiler cannot check. Keep the original precise type, or parse untrusted input with the schema validator this project uses (ajv, zod, valibot) so it returns the target type; splitting the chain across bindings is the same defect.
 
 ### [no-chained-type-assertions] mixed as and angle-bracket
 
@@ -1495,7 +1495,7 @@ const value = <User>(input as unknown);
 ```
 
 **Expected findings:**
-- [no-chained-type-assertions] This assertion chain discards type evidence. Keep the original precise type, or parse untrusted input at its boundary before narrowing it.
+- [no-chained-type-assertions] This assertion chain forces a type the compiler cannot check. Keep the original precise type, or parse untrusted input with the schema validator this project uses (ajv, zod, valibot) so it returns the target type; splitting the chain across bindings is the same defect.
 
 ### [no-chained-type-assertions] angle-bracket const over non-const as
 
@@ -1505,7 +1505,7 @@ const value = <const>(input as User);
 ```
 
 **Expected findings:**
-- [no-chained-type-assertions] This assertion chain discards type evidence. Keep the original precise type, or parse untrusted input at its boundary before narrowing it.
+- [no-chained-type-assertions] This assertion chain forces a type the compiler cannot check. Keep the original precise type, or parse untrusted input with the schema validator this project uses (ajv, zod, valibot) so it returns the target type; splitting the chain across bindings is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #1
 
@@ -1514,7 +1514,7 @@ const value: unknown = {};
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit unknown type on binding `value` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit unknown type on binding `value` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #2
 
@@ -1523,7 +1523,7 @@ const value: object = {};
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit object type on binding `value` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit object type on binding `value` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #3
 
@@ -1532,7 +1532,7 @@ let value: unknown; value = {};
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit unknown type on binding `value` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit unknown type on binding `value` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #4
 
@@ -1541,7 +1541,7 @@ function create(): unknown { return {}; }
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit unknown type on return value of `create` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit unknown type on return value of `create` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #5
 
@@ -1550,7 +1550,7 @@ type Command = () => void; const startCommand = () => {}; const commands: Record
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #6
 
@@ -1559,7 +1559,7 @@ type Command = () => void; const startCommand = () => {}; const commands: { [key
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #7
 
@@ -1568,7 +1568,7 @@ type Command = () => void; const startCommand = () => {}; const commands: { [K i
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #8
 
@@ -1577,7 +1577,7 @@ type Command = () => void; const startCommand = () => {}; const commands: { star
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit anonymous object type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit anonymous object type on binding `commands` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #9
 
@@ -1586,7 +1586,7 @@ type Command = () => void; const startCommand = () => {}; const commands = { sta
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit open dictionary type on assertion discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit open dictionary type on assertion throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #10
 
@@ -1595,7 +1595,7 @@ type Command = () => void; const startCommand = () => {}; const commands = ({ st
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit object type on assertion discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit object type on assertion throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #11
 
@@ -1604,7 +1604,7 @@ type Command = () => void; const startCommand = () => {}; class Registry { comma
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit open dictionary type on property `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit open dictionary type on property `commands` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #12
 
@@ -1613,7 +1613,7 @@ type Command = () => void; const startCommand = () => {}; let commands: Record<s
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #13
 
@@ -1622,7 +1622,7 @@ type Command = () => void; const startCommand = () => {}; function create(): Rec
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit open dictionary type on return value of `create` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit open dictionary type on return value of `create` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #14
 
@@ -1631,7 +1631,7 @@ type Command = () => void; const startCommand = () => {}; function create(): { s
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit anonymous object type on return value of `create` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit anonymous object type on return value of `create` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #15
 
@@ -1640,7 +1640,7 @@ type Command = () => void; const startCommand = () => {}; const source = { start
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #16
 
@@ -1649,7 +1649,7 @@ type Command = () => void; const startCommand = () => {}; type Open = Record<str
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #17
 
@@ -1658,7 +1658,7 @@ type Command = () => void; const startCommand = () => {}; type Open = { [key: st
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #18
 
@@ -1667,7 +1667,7 @@ type Command = () => void; const startCommand = () => {}; type Open = { [key in 
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #19
 
@@ -1676,7 +1676,7 @@ type Command = () => void; const startCommand = () => {}; type Open = Readonly<R
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #20
 
@@ -1685,7 +1685,7 @@ type Command = () => void; const startCommand = () => {}; function outer() { typ
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #21
 
@@ -1694,7 +1694,7 @@ type Command = () => void; const startCommand = () => {}; type Index<T> = Record
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit generic container type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit generic container type on binding `commands` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #22
 
@@ -1703,7 +1703,7 @@ type Command = () => void; const startCommand = () => {}; type Identity<T> = T; 
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit generic container type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit generic container type on binding `commands` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #23
 
@@ -1712,7 +1712,7 @@ type Command = () => void; const startCommand = () => {}; type Index<T> = Record
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #24
 
@@ -1721,7 +1721,7 @@ type Command = () => void; const startCommand = () => {}; type Index<T = Command
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit generic container type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit generic container type on binding `commands` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #25
 
@@ -1730,7 +1730,7 @@ type Command = () => void; const startCommand = () => {}; type Key = string; con
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #26
 
@@ -1739,7 +1739,7 @@ type Command = () => void; const startCommand = () => {}; const commands: Record
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #27
 
@@ -1748,7 +1748,7 @@ type Command = () => void; const startCommand = () => {}; const commands: Record
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit open dictionary type on binding `commands` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit open dictionary type on binding `commands` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #28
 
@@ -1757,7 +1757,7 @@ const value: unknown = 1;
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit unknown type on binding `value` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit unknown type on binding `value` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #29
 
@@ -1766,7 +1766,7 @@ const value: object = [];
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit object type on binding `value` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit object type on binding `value` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #30
 
@@ -1775,7 +1775,7 @@ function isString(value: unknown): value is string { return true; } isString('kn
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit unknown type on argument for parameter `value` of `isString` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit unknown type on argument for parameter `value` of `isString` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #31
 
@@ -1784,7 +1784,7 @@ function isString(value: unknown): value is string { return true; } const known 
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit unknown type on argument for parameter `value` of `isString` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit unknown type on argument for parameter `value` of `isString` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #32
 
@@ -1793,7 +1793,7 @@ function isString(value: string | unknown): value is string { return true; } isS
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit unknown type on argument for parameter `value` of `isString` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit unknown type on argument for parameter `value` of `isString` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #33
 
@@ -1802,7 +1802,7 @@ function isString(value: unknown): value is string { return true; } function che
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit unknown type on argument for parameter `value` of `isString` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit unknown type on argument for parameter `value` of `isString` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #34
 
@@ -1811,7 +1811,7 @@ const isString = (value: unknown): value is string => true; const known: string 
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit unknown type on argument for parameter `value` of `isString` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit unknown type on argument for parameter `value` of `isString` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream: invalid #35
 
@@ -1820,7 +1820,7 @@ type User = { readonly id: string }; function isUser(value: unknown): value is U
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit unknown type on argument for parameter `value` of `isUser` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit unknown type on argument for parameter `value` of `isUser` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] extra: method return value names the method
 
@@ -1829,7 +1829,7 @@ class A { make(): unknown { return 1; } }
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit unknown type on return value of `make` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit unknown type on return value of `make` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] extra: expression-bodied arrow names its binding
 
@@ -1838,7 +1838,7 @@ const make = (): object => [];
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit object type on return value of `make` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit object type on return value of `make` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] extra: angle-bracket assertion reports
 
@@ -1847,7 +1847,7 @@ const value = <unknown>1;
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit unknown type on assertion discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit unknown type on assertion throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] extra: declare function predicate with call evidence
 
@@ -1856,7 +1856,7 @@ declare function isString(value: unknown): value is string; isString(1);
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit unknown type on argument for parameter `value` of `isString` discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit unknown type on argument for parameter `value` of `isString` throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream oracle: destructured const binding follows declarator init as evidence (object pattern)
 
@@ -1866,7 +1866,7 @@ const s = { id: 1 }; const { a }: any = s; const p = a as { id: number };
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit anonymous object type on assertion discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit anonymous object type on assertion throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-known-value-widening] upstream oracle: destructured const binding follows declarator init as evidence (array pattern)
 
@@ -1876,7 +1876,7 @@ const s = { id: 1 }; const [a]: any = s; const p = a as { id: number };
 ```
 
 **Expected findings:**
-- [no-known-value-widening] The explicit anonymous object type on assertion discards known type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+- [no-known-value-widening] The explicit anonymous object type on assertion throws away the type the value already has. Delete the annotation and keep inference, check it with `satisfies`, or annotate a named domain type; another open type is the same defect.
 
 ### [no-object-parameters] bare object parameter
 
@@ -1886,7 +1886,7 @@ function f(value: object) {}
 ```
 
 **Expected findings:**
-- [no-object-parameters] Parameter `value` uses the broad `object` type. Accept a named owner type; parse external input at its boundary before calling this function.
+- [no-object-parameters] Parameter `value` uses the broad `object` type, which gives callers no shape. Accept a named domain type and parse external input into it at the boundary with the schema validator this project uses (ajv, zod, valibot); `Record<string, unknown>` or `{}` is the same defect.
 
 ### [no-object-parameters] same-file alias
 
@@ -1896,7 +1896,7 @@ type Alias = object; function f(value: Alias) {}
 ```
 
 **Expected findings:**
-- [no-object-parameters] Parameter `value` uses the broad `object` type. Accept a named owner type; parse external input at its boundary before calling this function.
+- [no-object-parameters] Parameter `value` uses the broad `object` type, which gives callers no shape. Accept a named domain type and parse external input into it at the boundary with the schema validator this project uses (ajv, zod, valibot); `Record<string, unknown>` or `{}` is the same defect.
 
 ### [no-object-parameters] parenthesized alias
 
@@ -1906,7 +1906,7 @@ type Alias = (object); function f(value: Alias) {}
 ```
 
 **Expected findings:**
-- [no-object-parameters] Parameter `value` uses the broad `object` type. Accept a named owner type; parse external input at its boundary before calling this function.
+- [no-object-parameters] Parameter `value` uses the broad `object` type, which gives callers no shape. Accept a named domain type and parse external input into it at the boundary with the schema validator this project uses (ajv, zod, valibot); `Record<string, unknown>` or `{}` is the same defect.
 
 ### [no-object-parameters] infer binding does not shadow in false branch
 
@@ -1916,7 +1916,7 @@ type Item = object; type Fallback<Input> = Input extends infer Item ? string : (
 ```
 
 **Expected findings:**
-- [no-object-parameters] Parameter `value` uses the broad `object` type. Accept a named owner type; parse external input at its boundary before calling this function.
+- [no-object-parameters] Parameter `value` uses the broad `object` type, which gives callers no shape. Accept a named domain type and parse external input into it at the boundary with the schema validator this project uses (ajv, zod, valibot); `Record<string, unknown>` or `{}` is the same defect.
 
 ### [no-object-parameters] default value
 
@@ -1926,7 +1926,7 @@ function consume(value: object = {}): void {}
 ```
 
 **Expected findings:**
-- [no-object-parameters] Parameter `value` uses the broad `object` type. Accept a named owner type; parse external input at its boundary before calling this function.
+- [no-object-parameters] Parameter `value` uses the broad `object` type, which gives callers no shape. Accept a named domain type and parse external input into it at the boundary with the schema validator this project uses (ajv, zod, valibot); `Record<string, unknown>` or `{}` is the same defect.
 
 ### [no-object-parameters] destructured parameter reports pattern text
 
@@ -1936,7 +1936,7 @@ function consume({ value }: object = {}): void {}
 ```
 
 **Expected findings:**
-- [no-object-parameters] Parameter `{ value }` uses the broad `object` type. Accept a named owner type; parse external input at its boundary before calling this function.
+- [no-object-parameters] Parameter `{ value }` uses the broad `object` type, which gives callers no shape. Accept a named domain type and parse external input into it at the boundary with the schema validator this project uses (ajv, zod, valibot); `Record<string, unknown>` or `{}` is the same defect.
 
 ### [no-object-parameters] destructured alias
 
@@ -1946,7 +1946,7 @@ type Bag = object; function consume({ value }: Bag): void {}
 ```
 
 **Expected findings:**
-- [no-object-parameters] Parameter `{ value }` uses the broad `object` type. Accept a named owner type; parse external input at its boundary before calling this function.
+- [no-object-parameters] Parameter `{ value }` uses the broad `object` type, which gives callers no shape. Accept a named domain type and parse external input into it at the boundary with the schema validator this project uses (ajv, zod, valibot); `Record<string, unknown>` or `{}` is the same defect.
 
 ### [no-object-parameters] alias inside function
 
@@ -1956,7 +1956,7 @@ function outer() { type Payload = object; function consume(value: Payload) {} }
 ```
 
 **Expected findings:**
-- [no-object-parameters] Parameter `value` uses the broad `object` type. Accept a named owner type; parse external input at its boundary before calling this function.
+- [no-object-parameters] Parameter `value` uses the broad `object` type, which gives callers no shape. Accept a named domain type and parse external input into it at the boundary with the schema validator this project uses (ajv, zod, valibot); `Record<string, unknown>` or `{}` is the same defect.
 
 ### [no-object-parameters] alias hoisted after use
 
@@ -1966,7 +1966,7 @@ function outer() { function consume(value: Payload) {} type Payload = object; }
 ```
 
 **Expected findings:**
-- [no-object-parameters] Parameter `value` uses the broad `object` type. Accept a named owner type; parse external input at its boundary before calling this function.
+- [no-object-parameters] Parameter `value` uses the broad `object` type, which gives callers no shape. Accept a named domain type and parse external input into it at the boundary with the schema validator this project uses (ajv, zod, valibot); `Record<string, unknown>` or `{}` is the same defect.
 
 ### [no-object-parameters] generic identity alias
 
@@ -1976,7 +1976,7 @@ type Identity<T> = T; function consume(value: Identity<object>) {}
 ```
 
 **Expected findings:**
-- [no-object-parameters] Parameter `value` uses the broad `object` type. Accept a named owner type; parse external input at its boundary before calling this function.
+- [no-object-parameters] Parameter `value` uses the broad `object` type, which gives callers no shape. Accept a named domain type and parse external input into it at the boundary with the schema validator this project uses (ajv, zod, valibot); `Record<string, unknown>` or `{}` is the same defect.
 
 ### [no-object-parameters] nested generic alias
 
@@ -1986,7 +1986,7 @@ type Identity<T> = T; type Wrapped<T> = Identity<T>; function consume(value: Wra
 ```
 
 **Expected findings:**
-- [no-object-parameters] Parameter `value` uses the broad `object` type. Accept a named owner type; parse external input at its boundary before calling this function.
+- [no-object-parameters] Parameter `value` uses the broad `object` type, which gives callers no shape. Accept a named domain type and parse external input into it at the boundary with the schema validator this project uses (ajv, zod, valibot); `Record<string, unknown>` or `{}` is the same defect.
 
 ### [no-object-parameters] default type parameter resolving to object
 
@@ -1996,7 +1996,7 @@ type O<T = object> = T; function f(x: O) {}
 ```
 
 **Expected findings:**
-- [no-object-parameters] Parameter `x` uses the broad `object` type. Accept a named owner type; parse external input at its boundary before calling this function.
+- [no-object-parameters] Parameter `x` uses the broad `object` type, which gives callers no shape. Accept a named domain type and parse external input into it at the boundary with the schema validator this project uses (ajv, zod, valibot); `Record<string, unknown>` or `{}` is the same defect.
 
 ### [no-object-parameters] union containing object
 
@@ -2006,7 +2006,7 @@ function f(value: string | object) {}
 ```
 
 **Expected findings:**
-- [no-object-parameters] Parameter `value` uses the broad `object` type. Accept a named owner type; parse external input at its boundary before calling this function.
+- [no-object-parameters] Parameter `value` uses the broad `object` type, which gives callers no shape. Accept a named domain type and parse external input into it at the boundary with the schema validator this project uses (ajv, zod, valibot); `Record<string, unknown>` or `{}` is the same defect.
 
 ### [no-runtime-typeof] typeof string comparison
 
@@ -2016,7 +2016,7 @@ if (typeof input === "string") use(input);
 ```
 
 **Expected findings:**
-- [no-runtime-typeof] A `typeof` check narrows a representation without establishing its contract. Parse input at its I/O boundary, then branch on the domain value.
+- [no-runtime-typeof] A `typeof` check is hand-written shape testing, not parsing, even at the I/O boundary. Parse the input once with the schema validator this project uses (ajv, zod, valibot), or add one or a single named parse function if none exists, then branch on the typed result.
 
 ### [no-runtime-typeof] typeof compared with undefined identifier
 
@@ -2026,7 +2026,7 @@ if (typeof input === undefined) use(input);
 ```
 
 **Expected findings:**
-- [no-runtime-typeof] A `typeof` check narrows a representation without establishing its contract. Parse input at its I/O boundary, then branch on the domain value.
+- [no-runtime-typeof] A `typeof` check is hand-written shape testing, not parsing, even at the I/O boundary. Parse the input once with the schema validator this project uses (ajv, zod, valibot), or add one or a single named parse function if none exists, then branch on the typed result.
 
 ### [no-runtime-typeof] typeof in a javascript file
 
@@ -2036,7 +2036,7 @@ if (typeof input === "string") use(input);
 ```
 
 **Expected findings:**
-- [no-runtime-typeof] A `typeof` check narrows a representation without establishing its contract. Parse input at its I/O boundary, then branch on the domain value.
+- [no-runtime-typeof] A `typeof` check is hand-written shape testing, not parsing, even at the I/O boundary. Parse the input once with the schema validator this project uses (ajv, zod, valibot), or add one or a single named parse function if none exists, then branch on the typed result.
 
 ### [no-runtime-typeof] typeof in a type guard is still flagged
 
@@ -2046,7 +2046,7 @@ function isString(value: unknown): value is string { return typeof value === "st
 ```
 
 **Expected findings:**
-- [no-runtime-typeof] A `typeof` check narrows a representation without establishing its contract. Parse input at its I/O boundary, then branch on the domain value.
+- [no-runtime-typeof] A `typeof` check is hand-written shape testing, not parsing, even at the I/O boundary. Parse the input once with the schema validator this project uses (ajv, zod, valibot), or add one or a single named parse function if none exists, then branch on the typed result.
 
 ### [no-runtime-typeof] typeof in a non-guard function
 
@@ -2056,7 +2056,7 @@ function parse(value: unknown): string { if (typeof value !== "string") throw ne
 ```
 
 **Expected findings:**
-- [no-runtime-typeof] A `typeof` check narrows a representation without establishing its contract. Parse input at its I/O boundary, then branch on the domain value.
+- [no-runtime-typeof] A `typeof` check is hand-written shape testing, not parsing, even at the I/O boundary. Parse the input once with the schema validator this project uses (ajv, zod, valibot), or add one or a single named parse function if none exists, then branch on the typed result.
 
 ### [no-runtime-typeof] typeof in a nested closure of a type guard
 
@@ -2066,7 +2066,7 @@ function isString(value: unknown): value is string { const check = () => typeof 
 ```
 
 **Expected findings:**
-- [no-runtime-typeof] A `typeof` check narrows a representation without establishing its contract. Parse input at its I/O boundary, then branch on the domain value.
+- [no-runtime-typeof] A `typeof` check is hand-written shape testing, not parsing, even at the I/O boundary. Parse the input once with the schema validator this project uses (ajv, zod, valibot), or add one or a single named parse function if none exists, then branch on the typed result.
 
 ### [no-runtime-typeof] typeof in an arrow type guard
 
@@ -2076,7 +2076,7 @@ const isString = (value: unknown): value is string => typeof value === "string";
 ```
 
 **Expected findings:**
-- [no-runtime-typeof] A `typeof` check narrows a representation without establishing its contract. Parse input at its I/O boundary, then branch on the domain value.
+- [no-runtime-typeof] A `typeof` check is hand-written shape testing, not parsing, even at the I/O boundary. Parse the input once with the schema validator this project uses (ajv, zod, valibot), or add one or a single named parse function if none exists, then branch on the typed result.
 
 ### [no-runtime-typeof] typeof in an assertion function
 
@@ -2086,7 +2086,7 @@ function assertString(value: unknown): asserts value is string { if (typeof valu
 ```
 
 **Expected findings:**
-- [no-runtime-typeof] A `typeof` check narrows a representation without establishing its contract. Parse input at its I/O boundary, then branch on the domain value.
+- [no-runtime-typeof] A `typeof` check is hand-written shape testing, not parsing, even at the I/O boundary. Parse the input once with the schema validator this project uses (ajv, zod, valibot), or add one or a single named parse function if none exists, then branch on the typed result.
 
 ### [no-runtime-typeof] option still flags typeof in a non-guard function
 
@@ -2098,7 +2098,7 @@ function parse(value: unknown): string { if (typeof value !== "string") throw ne
 ```
 
 **Expected findings:**
-- [no-runtime-typeof] A `typeof` check narrows a representation without establishing its contract. Parse input at its I/O boundary, then branch on the domain value.
+- [no-runtime-typeof] A `typeof` check is hand-written shape testing, not parsing, even at the I/O boundary. Parse the input once with the schema validator this project uses (ajv, zod, valibot), or add one or a single named parse function if none exists, then branch on the typed result.
 
 ### [no-runtime-typeof] option still flags typeof in a closure nested in a type guard
 
@@ -2110,7 +2110,7 @@ function isString(value: unknown): value is string { const check = () => typeof 
 ```
 
 **Expected findings:**
-- [no-runtime-typeof] A `typeof` check narrows a representation without establishing its contract. Parse input at its I/O boundary, then branch on the domain value.
+- [no-runtime-typeof] A `typeof` check is hand-written shape testing, not parsing, even at the I/O boundary. Parse the input once with the schema validator this project uses (ajv, zod, valibot), or add one or a single named parse function if none exists, then branch on the typed result.
 
 ### [no-unknown-parameters] bare unknown parameter
 
@@ -2120,7 +2120,7 @@ function parse(value: unknown): void {}
 ```
 
 **Expected findings:**
-- [no-unknown-parameters] Parameter `value` leaves input unparsed. Accept a named domain type; run the expected schema or parser at the I/O boundary before calling this function.
+- [no-unknown-parameters] Parameter `value` leaves input unparsed. Accept a named domain type and parse at the I/O boundary with the schema validator this project uses (ajv, zod, valibot) before calling this function; `typeof` checks in the body are not a parse.
 
 ### [no-unknown-parameters] unknown in union
 
@@ -2130,7 +2130,7 @@ function parse(value: string | unknown): void {}
 ```
 
 **Expected findings:**
-- [no-unknown-parameters] Parameter `value` leaves input unparsed. Accept a named domain type; run the expected schema or parser at the I/O boundary before calling this function.
+- [no-unknown-parameters] Parameter `value` leaves input unparsed. Accept a named domain type and parse at the I/O boundary with the schema validator this project uses (ajv, zod, valibot) before calling this function; `typeof` checks in the body are not a parse.
 
 ### [no-unknown-parameters] unknown in nested parenthesized union
 
@@ -2140,7 +2140,7 @@ function parse(value: string | (number | unknown)): void {}
 ```
 
 **Expected findings:**
-- [no-unknown-parameters] Parameter `value` leaves input unparsed. Accept a named domain type; run the expected schema or parser at the I/O boundary before calling this function.
+- [no-unknown-parameters] Parameter `value` leaves input unparsed. Accept a named domain type and parse at the I/O boundary with the schema validator this project uses (ajv, zod, valibot) before calling this function; `typeof` checks in the body are not a parse.
 
 ### [no-unknown-parameters] only the non-subject parameter is flagged
 
@@ -2150,7 +2150,7 @@ function isString(value: unknown, context: unknown): value is string { return tr
 ```
 
 **Expected findings:**
-- [no-unknown-parameters] Parameter `context` leaves input unparsed. Accept a named domain type; run the expected schema or parser at the I/O boundary before calling this function.
+- [no-unknown-parameters] Parameter `context` leaves input unparsed. Accept a named domain type and parse at the I/O boundary with the schema validator this project uses (ajv, zod, valibot) before calling this function; `typeof` checks in the body are not a parse.
 
 ### [no-unknown-parameters] destructured parameter reports pattern text
 
@@ -2160,7 +2160,7 @@ export function parse({ value }: unknown = {}): void {}
 ```
 
 **Expected findings:**
-- [no-unknown-parameters] Parameter `{ value }` leaves input unparsed. Accept a named domain type; run the expected schema or parser at the I/O boundary before calling this function.
+- [no-unknown-parameters] Parameter `{ value }` leaves input unparsed. Accept a named domain type and parse at the I/O boundary with the schema validator this project uses (ajv, zod, valibot) before calling this function; `typeof` checks in the body are not a parse.
 
 ### [no-unknown-parameters] class method
 
@@ -2170,7 +2170,7 @@ class A { m(x: unknown) {} }
 ```
 
 **Expected findings:**
-- [no-unknown-parameters] Parameter `x` leaves input unparsed. Accept a named domain type; run the expected schema or parser at the I/O boundary before calling this function.
+- [no-unknown-parameters] Parameter `x` leaves input unparsed. Accept a named domain type and parse at the I/O boundary with the schema validator this project uses (ajv, zod, valibot) before calling this function; `typeof` checks in the body are not a parse.
 
 ### [no-unknown-parameters] interface method signature
 
@@ -2180,7 +2180,7 @@ interface I { m(x: unknown): void }
 ```
 
 **Expected findings:**
-- [no-unknown-parameters] Parameter `x` leaves input unparsed. Accept a named domain type; run the expected schema or parser at the I/O boundary before calling this function.
+- [no-unknown-parameters] Parameter `x` leaves input unparsed. Accept a named domain type and parse at the I/O boundary with the schema validator this project uses (ajv, zod, valibot) before calling this function; `typeof` checks in the body are not a parse.
 
 ### [no-unknown-parameters] arrow function
 
@@ -2190,7 +2190,7 @@ const f = (x: unknown) => x;
 ```
 
 **Expected findings:**
-- [no-unknown-parameters] Parameter `x` leaves input unparsed. Accept a named domain type; run the expected schema or parser at the I/O boundary before calling this function.
+- [no-unknown-parameters] Parameter `x` leaves input unparsed. Accept a named domain type and parse at the I/O boundary with the schema validator this project uses (ajv, zod, valibot) before calling this function; `typeof` checks in the body are not a parse.
 
 ### [no-unknown-parameters] optional parameter
 
@@ -2200,7 +2200,7 @@ function f(x?: unknown) {}
 ```
 
 **Expected findings:**
-- [no-unknown-parameters] Parameter `x` leaves input unparsed. Accept a named domain type; run the expected schema or parser at the I/O boundary before calling this function.
+- [no-unknown-parameters] Parameter `x` leaves input unparsed. Accept a named domain type and parse at the I/O boundary with the schema validator this project uses (ajv, zod, valibot) before calling this function; `typeof` checks in the body are not a parse.
 
 ### [no-unknown-parameters] rest parameter typed unknown
 
@@ -2210,7 +2210,7 @@ function f(...args: unknown) {}
 ```
 
 **Expected findings:**
-- [no-unknown-parameters] Parameter `args` leaves input unparsed. Accept a named domain type; run the expected schema or parser at the I/O boundary before calling this function.
+- [no-unknown-parameters] Parameter `args` leaves input unparsed. Accept a named domain type and parse at the I/O boundary with the schema validator this project uses (ajv, zod, valibot) before calling this function; `typeof` checks in the body are not a parse.
 
 ### [no-unknown-parameters] constructor parameter property
 
@@ -2220,7 +2220,7 @@ class A { constructor(private x: unknown) {} }
 ```
 
 **Expected findings:**
-- [no-unknown-parameters] Parameter `x` leaves input unparsed. Accept a named domain type; run the expected schema or parser at the I/O boundary before calling this function.
+- [no-unknown-parameters] Parameter `x` leaves input unparsed. Accept a named domain type and parse at the I/O boundary with the schema validator this project uses (ajv, zod, valibot) before calling this function; `typeof` checks in the body are not a parse.
 
 ### [no-unknown-parameters] function type
 
@@ -2230,7 +2230,7 @@ type F = (v: unknown) => void;
 ```
 
 **Expected findings:**
-- [no-unknown-parameters] Parameter `v` leaves input unparsed. Accept a named domain type; run the expected schema or parser at the I/O boundary before calling this function.
+- [no-unknown-parameters] Parameter `v` leaves input unparsed. Accept a named domain type and parse at the I/O boundary with the schema validator this project uses (ajv, zod, valibot) before calling this function; `typeof` checks in the body are not a parse.
 
 ### [no-unknown-parameters] declare function without predicate
 
@@ -2240,7 +2240,7 @@ declare function d(v: unknown): void;
 ```
 
 **Expected findings:**
-- [no-unknown-parameters] Parameter `v` leaves input unparsed. Accept a named domain type; run the expected schema or parser at the I/O boundary before calling this function.
+- [no-unknown-parameters] Parameter `v` leaves input unparsed. Accept a named domain type and parse at the I/O boundary with the schema validator this project uses (ajv, zod, valibot) before calling this function; `typeof` checks in the body are not a parse.
 
 ### [no-unknown-returns] default type param is unknown
 
@@ -2250,7 +2250,7 @@ type Box<T = unknown> = T; function load(): Box { return v; }
 ```
 
 **Expected findings:**
-- [no-unknown-returns] This function exposes `unknown` to its caller. Parse the value at its boundary and return a named domain type.
+- [no-unknown-returns] This function returns `unknown`, so every caller must check the value again. Parse it here with the schema validator this project uses (ajv, zod, valibot) and return the named domain type; moving the `typeof` checks to callers is the same defect.
 
 ### [no-unknown-returns] function declaration
 
@@ -2260,7 +2260,7 @@ function load(): unknown { return input; }
 ```
 
 **Expected findings:**
-- [no-unknown-returns] This function exposes `unknown` to its caller. Parse the value at its boundary and return a named domain type.
+- [no-unknown-returns] This function returns `unknown`, so every caller must check the value again. Parse it here with the schema validator this project uses (ajv, zod, valibot) and return the named domain type; moving the `typeof` checks to callers is the same defect.
 
 ### [no-unknown-returns] arrow function
 
@@ -2270,7 +2270,7 @@ const load = (): unknown => input;
 ```
 
 **Expected findings:**
-- [no-unknown-returns] This function exposes `unknown` to its caller. Parse the value at its boundary and return a named domain type.
+- [no-unknown-returns] This function returns `unknown`, so every caller must check the value again. Parse it here with the schema validator this project uses (ajv, zod, valibot) and return the named domain type; moving the `typeof` checks to callers is the same defect.
 
 ### [no-unknown-returns] function type
 
@@ -2280,7 +2280,7 @@ type Loader = () => unknown;
 ```
 
 **Expected findings:**
-- [no-unknown-returns] This function exposes `unknown` to its caller. Parse the value at its boundary and return a named domain type.
+- [no-unknown-returns] This function returns `unknown`, so every caller must check the value again. Parse it here with the schema validator this project uses (ajv, zod, valibot) and return the named domain type; moving the `typeof` checks to callers is the same defect.
 
 ### [no-unknown-returns] interface method signature
 
@@ -2290,7 +2290,7 @@ interface Loader { load(): unknown }
 ```
 
 **Expected findings:**
-- [no-unknown-returns] This function exposes `unknown` to its caller. Parse the value at its boundary and return a named domain type.
+- [no-unknown-returns] This function returns `unknown`, so every caller must check the value again. Parse it here with the schema validator this project uses (ajv, zod, valibot) and return the named domain type; moving the `typeof` checks to callers is the same defect.
 
 ### [no-unknown-returns] declare function
 
@@ -2300,7 +2300,7 @@ declare function load(): unknown;
 ```
 
 **Expected findings:**
-- [no-unknown-returns] This function exposes `unknown` to its caller. Parse the value at its boundary and return a named domain type.
+- [no-unknown-returns] This function returns `unknown`, so every caller must check the value again. Parse it here with the schema validator this project uses (ajv, zod, valibot) and return the named domain type; moving the `typeof` checks to callers is the same defect.
 
 ### [no-unknown-returns] unknown in union
 
@@ -2310,7 +2310,7 @@ function load(): string | unknown { return input; }
 ```
 
 **Expected findings:**
-- [no-unknown-returns] This function exposes `unknown` to its caller. Parse the value at its boundary and return a named domain type.
+- [no-unknown-returns] This function returns `unknown`, so every caller must check the value again. Parse it here with the schema validator this project uses (ajv, zod, valibot) and return the named domain type; moving the `typeof` checks to callers is the same defect.
 
 ### [no-unknown-returns] promise of unknown
 
@@ -2320,7 +2320,7 @@ function load(): Promise<unknown> { return promise; }
 ```
 
 **Expected findings:**
-- [no-unknown-returns] This function exposes `unknown` to its caller. Parse the value at its boundary and return a named domain type.
+- [no-unknown-returns] This function returns `unknown`, so every caller must check the value again. Parse it here with the schema validator this project uses (ajv, zod, valibot) and return the named domain type; moving the `typeof` checks to callers is the same defect.
 
 ### [no-unknown-returns] alias resolving to unknown
 
@@ -2330,7 +2330,7 @@ type UnknownValue = unknown; function load(): UnknownValue { return input; }
 ```
 
 **Expected findings:**
-- [no-unknown-returns] This function exposes `unknown` to its caller. Parse the value at its boundary and return a named domain type.
+- [no-unknown-returns] This function returns `unknown`, so every caller must check the value again. Parse it here with the schema validator this project uses (ajv, zod, valibot) and return the named domain type; moving the `typeof` checks to callers is the same defect.
 
 ### [no-unknown-returns] infer name is not bound in the false branch
 
@@ -2340,7 +2340,7 @@ type Item = unknown; type Fallback<Input> = Input extends infer Item ? string : 
 ```
 
 **Expected findings:**
-- [no-unknown-returns] This function exposes `unknown` to its caller. Parse the value at its boundary and return a named domain type.
+- [no-unknown-returns] This function returns `unknown`, so every caller must check the value again. Parse it here with the schema validator this project uses (ajv, zod, valibot) and return the named domain type; moving the `typeof` checks to callers is the same defect.
 
 ### [no-unknown-returns] alias scoped inside a function body
 
@@ -2350,7 +2350,7 @@ function outer() { type Result = unknown; function load(): Result { return input
 ```
 
 **Expected findings:**
-- [no-unknown-returns] This function exposes `unknown` to its caller. Parse the value at its boundary and return a named domain type.
+- [no-unknown-returns] This function returns `unknown`, so every caller must check the value again. Parse it here with the schema validator this project uses (ajv, zod, valibot) and return the named domain type; moving the `typeof` checks to callers is the same defect.
 
 ### [no-unknown-returns] generic alias instantiated with unknown
 
@@ -2360,7 +2360,7 @@ type Identity<T> = T; function load(): Identity<unknown> { return input; }
 ```
 
 **Expected findings:**
-- [no-unknown-returns] This function exposes `unknown` to its caller. Parse the value at its boundary and return a named domain type.
+- [no-unknown-returns] This function returns `unknown`, so every caller must check the value again. Parse it here with the schema validator this project uses (ajv, zod, valibot) and return the named domain type; moving the `typeof` checks to callers is the same defect.
 
 ### [no-unknown-returns] nested generic alias wrapping promise
 
@@ -2370,7 +2370,7 @@ type Identity<T> = T; type Wrapped<T> = Promise<Identity<T>>; function load(): W
 ```
 
 **Expected findings:**
-- [no-unknown-returns] This function exposes `unknown` to its caller. Parse the value at its boundary and return a named domain type.
+- [no-unknown-returns] This function returns `unknown`, so every caller must check the value again. Parse it here with the schema validator this project uses (ajv, zod, valibot) and return the named domain type; moving the `typeof` checks to callers is the same defect.
 
 ### [no-unknown-returns] call signature
 
@@ -2380,7 +2380,7 @@ interface I { (): unknown }
 ```
 
 **Expected findings:**
-- [no-unknown-returns] This function exposes `unknown` to its caller. Parse the value at its boundary and return a named domain type.
+- [no-unknown-returns] This function returns `unknown`, so every caller must check the value again. Parse it here with the schema validator this project uses (ajv, zod, valibot) and return the named domain type; moving the `typeof` checks to callers is the same defect.
 
 ### [no-unknown-returns] construct signature
 
@@ -2390,7 +2390,7 @@ interface I { new (): unknown }
 ```
 
 **Expected findings:**
-- [no-unknown-returns] This function exposes `unknown` to its caller. Parse the value at its boundary and return a named domain type.
+- [no-unknown-returns] This function returns `unknown`, so every caller must check the value again. Parse it here with the schema validator this project uses (ajv, zod, valibot) and return the named domain type; moving the `typeof` checks to callers is the same defect.
 
 ### [no-unknown-returns] constructor type
 
@@ -2400,7 +2400,7 @@ type K = new () => unknown;
 ```
 
 **Expected findings:**
-- [no-unknown-returns] This function exposes `unknown` to its caller. Parse the value at its boundary and return a named domain type.
+- [no-unknown-returns] This function returns `unknown`, so every caller must check the value again. Parse it here with the schema validator this project uses (ajv, zod, valibot) and return the named domain type; moving the `typeof` checks to callers is the same defect.
 
 ### [no-unknown-returns] class method
 
@@ -2410,7 +2410,7 @@ class A { m(): unknown { return 1; } }
 ```
 
 **Expected findings:**
-- [no-unknown-returns] This function exposes `unknown` to its caller. Parse the value at its boundary and return a named domain type.
+- [no-unknown-returns] This function returns `unknown`, so every caller must check the value again. Parse it here with the schema validator this project uses (ajv, zod, valibot) and return the named domain type; moving the `typeof` checks to callers is the same defect.
 
 ### [no-unknown-type-aliases] bare unknown alias
 
@@ -2420,7 +2420,7 @@ type Alias = unknown;
 ```
 
 **Expected findings:**
-- [no-unknown-type-aliases] Type alias `Alias` hides `unknown`. Keep `unknown` explicit at the parsing boundary or on an allowed `cause` field; otherwise use the parsed owner type.
+- [no-unknown-type-aliases] Type alias `Alias` hides `unknown` behind a name that looks like a contract. Write `unknown` only where the parse happens or on a `cause` field, and elsewhere use the type the parser returns; a new name does not parse the value.
 
 ### [no-unknown-type-aliases] alias of unknown alias flags both
 
@@ -2430,8 +2430,8 @@ type UnknownValue = unknown; type Alias = UnknownValue;
 ```
 
 **Expected findings:**
-- [no-unknown-type-aliases] Type alias `UnknownValue` hides `unknown`. Keep `unknown` explicit at the parsing boundary or on an allowed `cause` field; otherwise use the parsed owner type.
-- [no-unknown-type-aliases] Type alias `Alias` hides `unknown`. Keep `unknown` explicit at the parsing boundary or on an allowed `cause` field; otherwise use the parsed owner type.
+- [no-unknown-type-aliases] Type alias `UnknownValue` hides `unknown` behind a name that looks like a contract. Write `unknown` only where the parse happens or on a `cause` field, and elsewhere use the type the parser returns; a new name does not parse the value.
+- [no-unknown-type-aliases] Type alias `Alias` hides `unknown` behind a name that looks like a contract. Write `unknown` only where the parse happens or on a `cause` field, and elsewhere use the type the parser returns; a new name does not parse the value.
 
 ### [no-unknown-type-aliases] union with unknown
 
@@ -2441,7 +2441,7 @@ type Payload = string | unknown;
 ```
 
 **Expected findings:**
-- [no-unknown-type-aliases] Type alias `Payload` hides `unknown`. Keep `unknown` explicit at the parsing boundary or on an allowed `cause` field; otherwise use the parsed owner type.
+- [no-unknown-type-aliases] Type alias `Payload` hides `unknown` behind a name that looks like a contract. Write `unknown` only where the parse happens or on a `cause` field, and elsewhere use the type the parser returns; a new name does not parse the value.
 
 ### [no-unknown-type-aliases] union through an unknown-resolving alias
 
@@ -2451,8 +2451,8 @@ type Payload = string | unknown; type NestedPayload = number | Payload;
 ```
 
 **Expected findings:**
-- [no-unknown-type-aliases] Type alias `Payload` hides `unknown`. Keep `unknown` explicit at the parsing boundary or on an allowed `cause` field; otherwise use the parsed owner type.
-- [no-unknown-type-aliases] Type alias `NestedPayload` hides `unknown`. Keep `unknown` explicit at the parsing boundary or on an allowed `cause` field; otherwise use the parsed owner type.
+- [no-unknown-type-aliases] Type alias `Payload` hides `unknown` behind a name that looks like a contract. Write `unknown` only where the parse happens or on a `cause` field, and elsewhere use the type the parser returns; a new name does not parse the value.
+- [no-unknown-type-aliases] Type alias `NestedPayload` hides `unknown` behind a name that looks like a contract. Write `unknown` only where the parse happens or on a `cause` field, and elsewhere use the type the parser returns; a new name does not parse the value.
 
 ### [no-unknown-type-aliases] generic identity applied to unknown
 
@@ -2462,7 +2462,7 @@ type Identity<T> = T; type Payload = Identity<unknown>;
 ```
 
 **Expected findings:**
-- [no-unknown-type-aliases] Type alias `Payload` hides `unknown`. Keep `unknown` explicit at the parsing boundary or on an allowed `cause` field; otherwise use the parsed owner type.
+- [no-unknown-type-aliases] Type alias `Payload` hides `unknown` behind a name that looks like a contract. Write `unknown` only where the parse happens or on a `cause` field, and elsewhere use the type the parser returns; a new name does not parse the value.
 
 ### [no-unknown-type-aliases] chained generic wrappers
 
@@ -2472,7 +2472,7 @@ type Identity<T> = T; type Wrapped<T> = Identity<T>; type Payload = Wrapped<unkn
 ```
 
 **Expected findings:**
-- [no-unknown-type-aliases] Type alias `Payload` hides `unknown`. Keep `unknown` explicit at the parsing boundary or on an allowed `cause` field; otherwise use the parsed owner type.
+- [no-unknown-type-aliases] Type alias `Payload` hides `unknown` behind a name that looks like a contract. Write `unknown` only where the parse happens or on a `cause` field, and elsewhere use the type the parser returns; a new name does not parse the value.
 
 ### [no-unknown-type-aliases] upstream: bare unknown alias
 
@@ -2481,7 +2481,7 @@ type Current = unknown;
 ```
 
 **Expected findings:**
-- [no-unknown-type-aliases] Type alias `Current` hides `unknown`. Keep `unknown` explicit at the parsing boundary or on an allowed `cause` field; otherwise use the parsed owner type.
+- [no-unknown-type-aliases] Type alias `Current` hides `unknown` behind a name that looks like a contract. Write `unknown` only where the parse happens or on a `cause` field, and elsewhere use the type the parser returns; a new name does not parse the value.
 
 ### [no-unknown-type-aliases] type parameter shadows an unknown alias
 
@@ -2491,7 +2491,7 @@ type Value = unknown; type Box<Value> = Value;
 ```
 
 **Expected findings:**
-- [no-unknown-type-aliases] Type alias `Value` hides `unknown`. Keep `unknown` explicit at the parsing boundary or on an allowed `cause` field; otherwise use the parsed owner type.
+- [no-unknown-type-aliases] Type alias `Value` hides `unknown` behind a name that looks like a contract. Write `unknown` only where the parse happens or on a `cause` field, and elsewhere use the type the parser returns; a new name does not parse the value.
 
 ### [no-unknown-type-aliases] inner alias shadows outer unknown alias
 
@@ -2501,8 +2501,8 @@ type A = unknown; type B = A; function f() { type A = string; type C = A; }
 ```
 
 **Expected findings:**
-- [no-unknown-type-aliases] Type alias `A` hides `unknown`. Keep `unknown` explicit at the parsing boundary or on an allowed `cause` field; otherwise use the parsed owner type.
-- [no-unknown-type-aliases] Type alias `B` hides `unknown`. Keep `unknown` explicit at the parsing boundary or on an allowed `cause` field; otherwise use the parsed owner type.
+- [no-unknown-type-aliases] Type alias `A` hides `unknown` behind a name that looks like a contract. Write `unknown` only where the parse happens or on a `cause` field, and elsewhere use the type the parser returns; a new name does not parse the value.
+- [no-unknown-type-aliases] Type alias `B` hides `unknown` behind a name that looks like a contract. Write `unknown` only where the parse happens or on a `cause` field, and elsewhere use the type the parser returns; a new name does not parse the value.
 
 ### [no-unknown-type-aliases] alias declared inside a function
 
@@ -2512,7 +2512,7 @@ function outer() { type Payload = unknown; }
 ```
 
 **Expected findings:**
-- [no-unknown-type-aliases] Type alias `Payload` hides `unknown`. Keep `unknown` explicit at the parsing boundary or on an allowed `cause` field; otherwise use the parsed owner type.
+- [no-unknown-type-aliases] Type alias `Payload` hides `unknown` behind a name that looks like a contract. Write `unknown` only where the parse happens or on a `cause` field, and elsewhere use the type the parser returns; a new name does not parse the value.
 
 ### [no-unsafe-dictionary-type] record of unknown
 
@@ -2522,7 +2522,7 @@ type A = Record<string, unknown>;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] record of any
 
@@ -2532,7 +2532,7 @@ type A = Record<string, any>;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's any value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's any value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] index signature of any
 
@@ -2542,7 +2542,7 @@ type A = { [key: string]: any };
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's any value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's any value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] index signature union with unknown
 
@@ -2552,7 +2552,7 @@ type A = { [index: number]: Command; [key: string]: unknown | Command };
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's union value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's union value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] mapped type of object
 
@@ -2562,7 +2562,7 @@ type A = { [K in PropertyKey]: object };
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's object value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's object value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] mapped type of NonNullable unknown
 
@@ -2572,7 +2572,7 @@ type A = { [K in PropertyKey]: NonNullable<unknown> };
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] index signature of NonNullable unknown
 
@@ -2582,7 +2582,7 @@ type A = { [key: string]: NonNullable<unknown> };
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] record of empty object
 
@@ -2592,7 +2592,7 @@ type A = Record<string, {}>;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's empty-object value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's empty-object value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] record of empty interface
 
@@ -2602,7 +2602,7 @@ interface Escape {} type A = Record<string, Escape>;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's empty-object value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's empty-object value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] record of interface with only never brand
 
@@ -2612,7 +2612,7 @@ interface Escape { readonly __brand?: never } type A = Record<string, Escape>;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's empty-object value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's empty-object value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] record of alias with only never brand
 
@@ -2622,7 +2622,7 @@ type Escape = { readonly __brand?: never }; type A = Record<string, Escape>;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's empty-object value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's empty-object value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] record of inline never brand
 
@@ -2632,7 +2632,7 @@ type A = Record<string, { readonly __brand?: never }>;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's empty-object value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's empty-object value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] record of string or unknown
 
@@ -2642,7 +2642,7 @@ type A = Record<string, string | unknown>;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's union value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's union value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] record of string or empty interface
 
@@ -2652,7 +2652,7 @@ interface Escape {} type A = Record<string, string | Escape>;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's union value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's union value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] record of unknown and empty object
 
@@ -2662,7 +2662,7 @@ type A = Record<string, unknown & {}>;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] any intersected with owner
 
@@ -2672,7 +2672,7 @@ interface Owner { readonly id: string } type A = Record<string, any & Owner>;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's any value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's any value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] record of alias for unknown
 
@@ -2682,7 +2682,7 @@ type Escape = unknown; type A = Record<string, Escape>;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] named dictionary alias
 
@@ -2692,7 +2692,7 @@ type Dict = Record<string, unknown>;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] wrappers around unsafe record report once
 
@@ -2702,7 +2702,7 @@ type A = Readonly<Partial<Required<(Record<string, unknown>)>>>;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] readonly index signature
 
@@ -2712,7 +2712,7 @@ type A = { readonly [key: string]: unknown };
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] readonly mapped type
 
@@ -2722,7 +2722,7 @@ type A = { readonly [K in string]: unknown };
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] Pick over unsafe source
 
@@ -2732,8 +2732,8 @@ type Source = Record<string, unknown>; type A = Pick<Source, string>;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] Omit over unsafe source
 
@@ -2743,8 +2743,8 @@ type Source = Record<string, unknown>; type A = Omit<Source, never>;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] generic alias applied to unknown
 
@@ -2754,7 +2754,7 @@ type Index<T> = Record<string, T>; type A = Index<unknown>;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] interface index signature
 
@@ -2764,7 +2764,7 @@ interface A { [key: string]: unknown }
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] Readonly record of unknown
 
@@ -2774,7 +2774,7 @@ type A = Readonly<Record<string, unknown>>;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] record of Readonly unknown
 
@@ -2784,7 +2784,7 @@ type A = Record<string, Readonly<unknown>>;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] record of Partial unknown
 
@@ -2794,7 +2794,7 @@ type A = Record<string, Partial<unknown>>;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] record of Required unknown
 
@@ -2804,7 +2804,7 @@ type A = Record<string, Required<unknown>>;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] record of alias to Readonly unknown
 
@@ -2814,7 +2814,7 @@ type Escape = Readonly<unknown>; type A = Record<string, Escape>;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] record of generic wrapper alias applied to unknown
 
@@ -2824,7 +2824,7 @@ type Wrapped<T> = Readonly<T>; type A = Record<string, Wrapped<unknown>>;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] record of NonNullable unknown
 
@@ -2834,7 +2834,7 @@ type A = Record<string, NonNullable<unknown>>;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] record of alias to NonNullable unknown
 
@@ -2844,7 +2844,7 @@ type Escape = NonNullable<unknown>; type A = Record<string, Escape>;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] plain alias consumers are not reported
 
@@ -2854,7 +2854,7 @@ type Unsafe = Record<string, unknown>; const x: Unsafe = {}; const y: Unsafe = {
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] alias of unsafe alias inside a declaration is reported
 
@@ -2864,8 +2864,8 @@ type Unsafe = Record<string, unknown>; type AlsoUnsafe = Unsafe; const x: Unsafe
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] generic default unknown
 
@@ -2875,7 +2875,7 @@ type Index<T = unknown> = Record<string, T>; type A = Index;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] second parameter defaults to first, explicit unknown
 
@@ -2885,7 +2885,7 @@ type Index<T, U = T> = Record<string, U>; type A = Index<string, unknown>;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] second parameter defaults to unknown first
 
@@ -2895,7 +2895,7 @@ type Index<T, U = T> = Record<string, U>; type A = Index<unknown>;
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] default through identity alias
 
@@ -2905,7 +2905,7 @@ type Value<T> = T; type Index<T, U = Value<T>> = Record<string, U>; type A = Ind
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] default resolves to marker with never brand
 
@@ -2915,7 +2915,7 @@ type Marker<T> = { readonly __brand?: never }; type Index<T, U = Marker<T>> = Re
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's empty-object value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's empty-object value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] local identity alias in function scope
 
@@ -2925,7 +2925,7 @@ function outer() { type Identity<T> = T; type A = Record<string, Identity<unknow
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-unsafe-dictionary-type] local Record shadow does not leak to other scopes
 
@@ -2935,7 +2935,7 @@ function local() { type Record<K, V> = { key: K; value: V }; type A = Record<str
 ```
 
 **Expected findings:**
-- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.
+- [no-unsafe-dictionary-type] This dictionary's unknown value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.
 
 ### [no-widen-then-assert] upstream: checkAssertion: unknown annotation then narrower assertion
 
@@ -2945,7 +2945,7 @@ const source = { id: 'second' }; const widened: unknown = source; const parsed =
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "widened" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "widened" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] widenedBinding: broadKind top via any annotation
 
@@ -2955,7 +2955,7 @@ const s = { id: 1 }; const w: any = s; const p = w as { id: number };
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] widenedBinding: broadKind top via initializer assertion `as unknown`
 
@@ -2965,7 +2965,7 @@ const s = { id: 1 }; const w = s as unknown; const p = w as { id: number };
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] widenedBinding: broadKind top via initializer assertion `as any`
 
@@ -2975,7 +2975,7 @@ const s = { id: 1 }; const w = s as any; const p = w as { id: number };
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] assertionIsNarrower: top kind accepts non-array non-object asserted type
 
@@ -2985,7 +2985,7 @@ const s = { id: 1 }; const w: unknown = s; const p = w as Foo;
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] isDefinitelyObjectType: object kind with type literal
 
@@ -2995,7 +2995,7 @@ const s = { id: 1 }; const w: object = s; const p = w as { id: number };
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] isDefinitelyObjectType: object kind with array
 
@@ -3005,7 +3005,7 @@ const s = { id: 1 }; const w: object = s; const p = w as number[];
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] isDefinitelyObjectType: object kind with tuple
 
@@ -3015,7 +3015,7 @@ const s = { id: 1 }; const w: object = s; const p = w as [number, string];
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] isDefinitelyObjectType: object kind with function type
 
@@ -3025,7 +3025,7 @@ const s = { id: 1 }; const w: object = s; const p = w as () => void;
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] isDefinitelyObjectType: object kind with constructor type
 
@@ -3035,7 +3035,7 @@ const s = { id: 1 }; const w: object = s; const p = w as new () => Foo;
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] isDefinitelyObjectType: object kind with mapped type
 
@@ -3045,7 +3045,7 @@ const s = { id: 1 }; const w: object = s; const p = w as { [K in 'a']: number };
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] isDefinitelyObjectType: object kind with intersection of objects
 
@@ -3055,7 +3055,7 @@ const s = { id: 1 }; const w: object = s; const p = w as { a: 1 } & { b: 2 };
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] isDefinitelyObjectType: object kind with readonly array
 
@@ -3065,7 +3065,7 @@ const s = { id: 1 }; const w: object = s; const p = w as readonly number[];
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] isDefinitelyObjectType: object kind with object keyword nested in intersection
 
@@ -3075,7 +3075,7 @@ const s = { id: 1 }; const w: object = s; const p = w as object & { a: 1 };
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] isDefinitelyObjectType: object kind with parenthesized array
 
@@ -3085,7 +3085,7 @@ const s = { id: 1 }; const w: object = s; const p = w as (number[]);
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] broadKind record via Record<string, unknown>: narrower Record<string, string>
 
@@ -3095,7 +3095,7 @@ const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as Record
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] broadKind record via Readonly<Record<string, unknown>>: narrower Record<string, string>
 
@@ -3105,7 +3105,7 @@ const s = { id: 1 }; const w: Readonly<Record<string, unknown>> = s; const p = w
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] broadKind record via index-signature literal: narrower Record<string, string>
 
@@ -3115,7 +3115,7 @@ const s = { id: 1 }; const w: { [key: string]: unknown } = s; const p = w as Rec
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] broadKind record via Record<PropertyKey, any>: narrower Record<string, string>
 
@@ -3125,7 +3125,7 @@ const s = { id: 1 }; const w: Record<PropertyKey, any> = s; const p = w as Recor
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] broadKind record via Record<string | number, unknown>: narrower Record<string, string>
 
@@ -3135,7 +3135,7 @@ const s = { id: 1 }; const w: Record<string | number, unknown> = s; const p = w 
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] broadKind record via Record<symbol, unknown>: narrower Record<string, string>
 
@@ -3145,7 +3145,7 @@ const s = { id: 1 }; const w: Record<symbol, unknown> = s; const p = w as Record
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] broadKind record via parenthesized Record: narrower Record<string, string>
 
@@ -3155,7 +3155,7 @@ const s = { id: 1 }; const w: (Record<string, unknown>) = s; const p = w as Reco
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted literal with properties
 
@@ -3165,7 +3165,7 @@ const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as { id: 
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted Readonly<Record<string, string>>
 
@@ -3175,7 +3175,7 @@ const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as Readon
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted Record with literal keys and narrow value
 
@@ -3185,7 +3185,7 @@ const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as Record
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted literal with property and index signature
 
@@ -3195,7 +3195,7 @@ const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as { id: 
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] isDefinitelyNarrowerRecordType: record kind asserted Readonly of literal with properties
 
@@ -3205,7 +3205,7 @@ const s = { id: 1 }; const w: Record<string, unknown> = s; const p = w as Readon
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] typesHaveSameSyntax: object kind, evidence type equals asserted type
 
@@ -3215,7 +3215,7 @@ const s = make() as Foo; const w: object = s; const p = w as Foo;
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] typesHaveSameSyntax: whitespace-insensitive match
 
@@ -3225,7 +3225,7 @@ const s = make() as Map<string, number>; const w: object = s; const p = w as Map
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] typesHaveSameSyntax: parenthesized types unwrapped on both sides
 
@@ -3235,7 +3235,7 @@ const s = make() as (Foo); const w: object = s; const p = w as ((Foo));
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] typesHaveSameSyntax: record kind with matching evidence
 
@@ -3245,7 +3245,7 @@ const s = make() as Foo; const w: Record<string, unknown> = s; const p = w as Fo
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] checkAssertion: same nested function boundary on both sides
 
@@ -3255,7 +3255,7 @@ function f() { const s = { id: 1 }; const w: unknown = s; return w as { id: numb
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] knownValueEvidence: const chain recursion
 
@@ -3265,7 +3265,7 @@ const a = { x: 1 }; const b = a; const w: unknown = b; const p = w as { x: numbe
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] knownValueEvidence: chain through parenthesized identifier
 
@@ -3275,7 +3275,7 @@ const a = { x: 1 }; const w: unknown = (a); const p = w as { x: number };
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] knownValueEvidence: chain through non-broad assertion
 
@@ -3285,7 +3285,7 @@ const a = make() as Foo; const b = a; const w: unknown = b; const p = w as Bar;
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] knownValueEvidence: evidence from non-broad annotated variable
 
@@ -3295,7 +3295,7 @@ declare const s: Foo; const w: unknown = s; const p = w as Bar;
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] knownValueEvidence: non-broad annotated const with unresolved init
 
@@ -3305,7 +3305,7 @@ const s: Foo = make(); const w: unknown = s; const p = w as Bar;
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] knownValueEvidence: string literal initializer is known evidence
 
@@ -3315,7 +3315,7 @@ const w: unknown = 'a'; const p = w as Foo;
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] knownValueEvidence: number literal initializer is known evidence
 
@@ -3325,7 +3325,7 @@ const w: unknown = 1; const p = w as Foo;
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] knownValueEvidence: template literal initializer is known evidence
 
@@ -3335,7 +3335,7 @@ const w: unknown = `a${b}`; const p = w as Foo;
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] knownValueEvidence: array expression initializer is known evidence
 
@@ -3345,7 +3345,7 @@ const w: unknown = [1]; const p = w as Foo;
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] knownValueEvidence: arrow function initializer is known evidence
 
@@ -3355,7 +3355,7 @@ const w: unknown = () => 1; const p = w as Foo;
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] knownValueEvidence: class expression initializer is known evidence
 
@@ -3365,7 +3365,7 @@ const w: unknown = class {}; const p = w as Foo;
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] knownValueEvidence: function expression initializer is known evidence
 
@@ -3375,7 +3375,7 @@ const w: unknown = function () {}; const p = w as Foo;
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] knownValueEvidence: new expression initializer is known evidence
 
@@ -3385,7 +3385,7 @@ const w: unknown = new Foo(); const p = w as Foo;
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] knownValueEvidence: object expression initializer is known evidence
 
@@ -3395,7 +3395,7 @@ const w: unknown = { a: 1 }; const p = w as Foo;
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] knownValueEvidence: parenthesized object expression initializer is known evidence
 
@@ -3405,7 +3405,7 @@ const w: unknown = ({ a: 1 }); const p = w as Foo;
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] knownValueEvidence: null literal initializer is known evidence
 
@@ -3415,7 +3415,7 @@ const w: unknown = null; const p = w as Foo;
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] knownValueEvidence: non-broad type assertion initializer is known evidence
 
@@ -3425,7 +3425,7 @@ const w: unknown = make() as Foo; const p = w as Foo;
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] knownValueEvidence: broad assertion unwrapped to literal original
 
@@ -3435,7 +3435,7 @@ const w = 'a' as unknown; const p = w as string;
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] assertedExpression: parenthesized asserted identifier
 
@@ -3445,7 +3445,7 @@ const s = { id: 1 }; const w: unknown = s; const p = (w) as { id: number };
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] assertionFromExpression: parenthesized initializer assertion
 
@@ -3455,7 +3455,7 @@ const s = { id: 1 }; const w = (s as unknown); const p = w as { id: number };
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] unwrapTypeParentheses: parenthesized annotation
 
@@ -3465,7 +3465,7 @@ const s = { id: 1 }; const w: (unknown) = s; const p = w as { id: number };
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] unwrapTypeParentheses: parenthesized asserted type
 
@@ -3475,7 +3475,7 @@ const s = { id: 1 }; const w: unknown = s; const p = w as (string);
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] checkAssertion: angle-bracket TSTypeAssertion
 
@@ -3485,7 +3485,7 @@ const s = { id: 1 }; const w: unknown = s; const p = <{ id: number }>w;
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] checkAssertion: angle-bracket assertion on parenthesized identifier
 
@@ -3495,7 +3495,7 @@ const s = { id: 1 }; const w: unknown = s; const p = <string>(w);
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] checkAssertion: initializer angle-bracket assertion to unknown
 
@@ -3505,7 +3505,7 @@ const s = { id: 1 }; const w = <unknown>s; const p = w as string;
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] checkAssertion: assertion nested in a call argument
 
@@ -3515,7 +3515,7 @@ const s = { id: 1 }; const w: unknown = s; use(w as string);
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.
 
 ### [no-widen-then-assert] checkAssertion: every assertion reported separately (first)
 
@@ -3525,4 +3525,4 @@ const s = { id: 1 }; const w: unknown = s; const p = [w as string];
 ```
 
 **Expected findings:**
-- [no-widen-then-assert] Binding "w" discards type evidence and later recreates it with an assertion. Keep the precise type from initialization through use; parse boundary input once.
+- [no-widen-then-assert] Binding "w" widens a value's type and later asserts it back. Keep the precise type from initialization through use; if the value comes from outside, parse it once with the schema validator this project uses (ajv, zod, valibot) instead of asserting.

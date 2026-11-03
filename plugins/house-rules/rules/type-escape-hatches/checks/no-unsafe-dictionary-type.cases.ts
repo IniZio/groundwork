@@ -1,7 +1,7 @@
 import type { RuleCases } from '../../../src/engine/types.js';
 
 const message = (value: string) =>
-  `[no-unsafe-dictionary-type] This dictionary's ${value} value type gives callers no concrete value contract. Use an owner/schema-derived value type; parse external payloads before insertion.`;
+  `[no-unsafe-dictionary-type] This dictionary's ${value} value type gives callers no value contract. Name the value type or derive it from a schema, and parse each payload before insertion with the schema validator this project uses (ajv, zod, valibot), adding one if none exists.`;
 const f = (...values: string[]) => values.map((v) => ({ message: message(v) }));
 
 export const cases: RuleCases = {

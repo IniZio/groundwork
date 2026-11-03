@@ -1,6 +1,6 @@
 import type { RuleCases } from '../../../src/engine/types.js';
 
-const message = '[no-unknown-returns] This function exposes `unknown` to its caller. Parse the value at its boundary and return a named domain type.';
+const message = '[no-unknown-returns] This function returns `unknown`, so every caller must check the value again. Parse it here with the schema validator this project uses (ajv, zod, valibot) and return the named domain type; moving the `typeof` checks to callers is the same defect.';
 const one = [{ message }];
 
 export const cases: RuleCases = {

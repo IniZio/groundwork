@@ -4,6 +4,8 @@
  * so the coordinator pays for the run and still has to do the check itself.
  */
 
+import { resolveCallerAgentType } from "./caller-agent.js";
+
 export interface HookResult { stdout: string; stderr: string; exit: number }
 
 function allow(): HookResult { return { stdout: "", stderr: "", exit: 0 }; }
@@ -17,11 +19,11 @@ export const REASON =
   "worker-background-guard: a background command dies when your turn ends, and an idle hand-back carries no receipt. " +
   "Run the check in the foreground under `timeout`. If it needs longer than the timeout allows, fold and report that instead.";
 
-export function check(input: unknown): HookResult {
+export function check(input: unknown, teamsDir?: string): HookResult {
   try {
     const inp = (input ?? {}) as Record<string, unknown>;
     if (inp.tool_name !== "Bash") return allow();
-    if (!GUARDED_AGENTS.includes(String(inp.agent_type ?? ""))) return allow();
+    if (!GUARDED_AGENTS.includes(resolveCallerAgentType(inp, teamsDir) ?? "")) return allow();
     const ti = (inp.tool_input ?? {}) as Record<string, unknown>;
     if (ti.run_in_background === true) return deny(REASON);
   } catch { /* fail-open */ }

@@ -16,7 +16,7 @@ flowchart LR
 - **pstack** provides the playbooks: poteto-mode, swarm, pause, orchestrate and the principle skills.
 - **house-rules** blocks commits that break the commit-message preset and edits that add more than 5 comment lines per 100 new lines.
 - **Agents** put cheaper models on cheaper work. `worker` is a copy of pstack's poteto-agent with a 150-turn runaway cap. It and `junior` stop at the brief's stop rules (three failed tries, 15 minutes without a green check), and the caller escalates the receipt to a fresh, stronger agent. `junior` (Sonnet) takes mechanical leaves from `worker` and hands back at the first failure that has no one-line fix. `git` and `tracker` (Haiku) run git and issue-tracker operations whose inputs are already decided.
-- **Agent guard** runs `Explore` on Sonnet and reroutes every `pstack:poteto-agent` spawn to `groundwork:worker`, and denies a `junior` spawn from anyone but `worker`. A `pstack:poteto-agent` or `worker` spawn without an explicit model is denied.
+- **Agent guard** runs `Explore` on Sonnet and reroutes every `pstack:poteto-agent` spawn to `groundwork:worker`, and denies a `junior` spawn from anyone but `worker`. A `pstack:poteto-agent` or `worker` spawn without an explicit model is denied. An agent-teams teammate reports its name as `agent_type`, so both guards map the name through the team config under `~/.claude/teams/` to the real type.
 - **Bash guards** deny a piped command whose exit code would be hidden, a slow or remote command (docker build, ssh, long runs) with no `timeout`, and a `run_in_background` call from `worker` or `junior` (the process dies with the agent's turn and the hand-back carries no receipt).
 
 ## Install

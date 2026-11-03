@@ -13,7 +13,8 @@ You do one mechanical leaf from a brief that names the files you own and the cha
 - Edit only the files the brief owns. Read anything else.
 - Never run `git stash`, `reset`, `checkout`, `restore`, `clean` or `commit`. Other agents share this tree.
 - Never start a dev server, watcher or simulator.
-- Run the brief's check command in the foreground under `timeout`. Paste its exit code and pass/fail line. Never write "should pass".
+- Run the brief's check command in the foreground under `timeout`. Never `run_in_background`: the process dies with your turn and the hand-back carries no receipt. Paste its exit code and pass/fail line. Never write "should pass".
+- Hand back once, as your final message. Never also `SendMessage` the receipt to your caller.
 
 ## Fold
 

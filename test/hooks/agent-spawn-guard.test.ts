@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { OVERRIDES, applyOverrides } from "./pstack-overrides.js";
 import { check, setPotetoPath } from "../../src/hooks/agent-spawn-guard.js";
 
 const HOOK = new URL("../../src/hooks/agent-spawn-guard.ts", import.meta.url).pathname;
@@ -107,12 +108,29 @@ describe("agents/worker.md — drift from pstack's poteto-agent", () => {
   });
   const newest = versions.at(-1);
 
-  it.skipIf(!newest)("contains the newest cached poteto-agent body verbatim", () => {
+  it.skipIf(!newest)("contains the newest cached poteto-agent body verbatim, modulo declared overrides", () => {
     const upstream = readFileSync(join(base, newest!, "agents/poteto-agent.md"), "utf8");
     const body = upstream.split(/^---\n/m).slice(2).join("---\n").trim();
     const worker = readFileSync(new URL("../../agents/worker.md", import.meta.url).pathname, "utf8");
     expect(body.length).toBeGreaterThan(0);
-    expect(worker).toContain(body);
+    expect(worker).toContain(applyOverrides(body));
+  });
+
+  const fixture = `Intro. ${OVERRIDES[0].from} Outro words here.`;
+
+  it("applies the override to a body that contains it", () => {
+    expect(applyOverrides(fixture)).toBe(`Intro. ${OVERRIDES[0].to} Outro words here.`);
+  });
+
+  it("a body changed in one other word no longer matches the worker text", () => {
+    const worker = applyOverrides(fixture);
+    const drifted = applyOverrides(fixture.replace("Outro", "Epilogue"));
+    expect(worker).toContain(applyOverrides(fixture));
+    expect(worker).not.toContain(drifted);
+  });
+
+  it("throws when an override's from text is missing from the body", () => {
+    expect(() => applyOverrides("Intro. Outro words here.")).toThrow(/stale override/);
   });
 });
 

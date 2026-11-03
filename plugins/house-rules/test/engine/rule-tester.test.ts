@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { ruleTester } from '../../src/engine/rule-tester.js';
-import type { Rule } from '../../src/engine/types.js';
+import type { Finding, Rule } from '../../src/engine/types.js';
 
 /**
  * Flags files whose path matches the given name exactly.
@@ -219,7 +219,7 @@ describe('ruleTester — code case with base field', () => {
     check: (ctx) => {
       const f = (ctx.files ?? [])[0];
       if (!f) return [];
-      const out: import('../../src/engine/types.js').Finding[] = [];
+      const out: Finding[] = [];
       if (f.baseText === undefined) {
         out.push({
           ruleId: 'base-check-rule',

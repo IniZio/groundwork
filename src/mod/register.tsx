@@ -87,17 +87,19 @@ export const register: Register = on => {
     return (
       <Box flexDirection="column">
         {open.map(q => (
-          <Box key={`q-${q.id}`}>
-            <Text>❓ #{q.id} {q.question} </Text>
-            {q.recommend === null ? null : (
-              <Button
-                key={`rec-${q.id}`}
-                label={q.recommend}
-                onPress={async () => $.prompt.submit({ text: await answer($, `#${q.id} ${q.recommend}`), asUser: true })}
-              />
-            )}
-            <Button key={`answer-${q.id}`} label="answer…" onPress={() => $.prompt.fill({ text: `#${q.id} `, mode: 'insert' })} />
-            <Button key={`dismiss-${q.id}`} label="✕" onPress={() => dismiss(q.id)} />
+          <Box key={`q-${q.id}`} flexDirection="column">
+            <Text>❓ #{q.id} {q.question}</Text>
+            <Box flexWrap="wrap">
+              {q.recommend === null ? null : (
+                <Button
+                  key={`rec-${q.id}`}
+                  label={q.recommend}
+                  onPress={async () => $.prompt.submit({ text: await answer($, `#${q.id} ${q.recommend}`), asUser: true })}
+                />
+              )}
+              <Button key={`answer-${q.id}`} label="answer…" onPress={() => $.prompt.fill({ text: `#${q.id} `, mode: 'insert' })} />
+              <Button key={`dismiss-${q.id}`} label="✕" onPress={() => dismiss(q.id)} />
+            </Box>
           </Box>
         ))}
       </Box>

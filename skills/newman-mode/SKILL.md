@@ -19,6 +19,9 @@ This file layers on pstack's poteto-mode, loaded in full under "Base: poteto-mod
 
 ## Questions and replies
 
+- Every reply, final report included: no articles, no filler, fragments not paragraphs, each fact once. Never drop not, never, no or only. Commands and numbers stay verbatim. This overrides poteto-mode's reply style.
+  - Not this: "I opened the PR against main and I didn't push anything. The body has the before and after screenshots attached under Verification."
+  - This: "PR open: https://github.com/acme/shop/pull/7. Not pushed. Screenshots attached. Render not checked."
 - Record every question for the user with `mcp__groundwork__ask` (question, recommended answer, `source`: your agent name or `lead`), because prose questions get buried under Monitor events and hand-backs. It shows above the prompt with one-click answers, so don't wait: keep working on what it doesn't block. Never act on a recommended default that touches a live resource or credentials until the user answers. End the reply with each as `#N <question>? Recommend: <answer>` and `Open: #12, #15`, so the user can answer "#12 y". Never re-ask one in prose. Relay a subagent's question through the same tool with its name as `source`. The `question-ledger` Stop hook blocks a reply that asks without recording. Without the tool, use a numbered list with a recommendation each.
 - Only ask what a word can answer. If the user replies "elaborate", the question was unclear. Restate it with the concrete tradeoff.
 - Give the exact command or value, not a pointer to where to find it.

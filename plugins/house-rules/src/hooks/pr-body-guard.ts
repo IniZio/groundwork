@@ -8,14 +8,20 @@ import type { Node } from "./lib/tree-sitter.js";
 import { getParser } from "./lib/tree-sitter-loader.js";
 import { readHookInput, type HookInput } from "./lib/hook-input.js";
 import { findPrBodies, findPrComments, type BodyRef } from "./lib/gh-pr-body.js";
+import { literal } from "./lib/shell-calls.js";
 import { prBodyEnabled } from "./lib/pr-body-enabled.js";
 import { checkProse, formatFindings, markdownAvailable, NO_MARKDOWN_NOTICE, type MarkdownHost } from "../../rules/pr-body/prose.js";
 import type { HookResult } from "./commit-guard.js";
 
 const allow = (): HookResult => ({ stdout: "", stderr: "", exit: 0 });
 
-const heredocText = (heredoc: Node) =>
-  heredoc.namedChildren.filter((c: Node | null) => c?.type === "heredoc_content").map((c: Node | null) => c?.text ?? "").join("\n");
+/** null when an unquoted heredoc holds an expansion, because the body is not known until the shell runs. */
+function heredocText(heredoc: Node): string | null {
+  const redirect = heredoc.parent;
+  const start = redirect?.namedChildren.find((c: Node | null) => c?.type === "heredoc_start")?.text ?? "";
+  if (!/['"\\]/.test(start) && heredoc.namedChildren.some((c: Node | null) => c?.type !== "heredoc_content")) return null;
+  return redirect?.text.startsWith("<<-") ? heredoc.text.replace(/^\t+/gm, "") : heredoc.text;
+}
 
 function payloadBody(payload: string): string | null {
   try {
@@ -35,13 +41,16 @@ function bodyText(ref: BodyRef): string | null {
       return null;
     }
   }
-  if (ref.kind === "json-stdin") return payloadBody(ref.heredoc.text);
+  if (ref.kind === "json-stdin") {
+    const payload = heredocText(ref.heredoc);
+    return payload === null ? null : payloadBody(payload);
+  }
   const heredoc = ref.kind === "stdin" ? ref.heredoc : ref.value.descendantsOfType("heredoc_body")[0];
   if (heredoc) return heredocText(heredoc);
-  if (ref.kind === "stdin") return null;
+  if (ref.kind === "stdin" || literal(ref.value) === null) return null;
   const q = ref.text[0];
   if (ref.text.length >= 2 && (q === `"` || q === "'") && ref.text.endsWith(q)) return ref.text.slice(1, -1);
-  return /[$`]/.test(ref.text) ? null : ref.text;
+  return ref.text;
 }
 
 function denyReason(findings: ReturnType<typeof checkProse>): string {

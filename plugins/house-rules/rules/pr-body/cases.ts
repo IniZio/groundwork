@@ -42,5 +42,20 @@ export const cases: RuleCases = {
       code: '## Why\n\nThe client printed no output.',
       findings: [{ ruleId: 'pr-body', message: 'PR body has no "## Scope" heading' }],
     },
+    {
+      why: 'a Why section over 3 sentences',
+      code: '## Why\n\nOne fact. Two facts. Three facts. Four facts.\n\n## Scope\n\nOne file.',
+      findings: [{ ruleId: 'pr-body', message: 'section has 4 sentences; the limit is 1-3' }],
+    },
+    {
+      why: 'a What changed section over 3 bullets',
+      code: '## Why\n\nOne fact.\n\n## What changed\n\n- One.\n- Two.\n- Three.\n- Four.\n\n## Scope\n\nOne file.',
+      findings: [{ ruleId: 'pr-body', message: 'section has 4 bullets; the limit is 1-3' }],
+    },
+    {
+      why: 'a PR body over 200 words',
+      code: `## Why\n\nOne fact.\n\n## Scope\n\n${'Twenty words sit in this one sentence so the body grows past the limit without breaking the sentence limit at all. '.repeat(10).trim()}`,
+      findings: [{ ruleId: 'pr-body', message: 'body has 214 words; the limit is 200' }],
+    },
   ],
 };

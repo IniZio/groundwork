@@ -2,6 +2,7 @@ export interface Finding { quote: string; reason: string }
 export interface ProseOptions { pr: boolean }
 
 export const MAX_WORDS = 25;
+export const MAX_PR_WORDS = 200;
 export const NO_MARKDOWN_NOTICE = "house-rules pr-body: check skipped, this bun has no Bun.markdown (needs bun >= 1.3.14)";
 
 type RenderCallbacks = Record<string, (content: string, meta?: { href?: string; level?: number }) => string>;
@@ -13,6 +14,7 @@ export function markdownAvailable(host: MarkdownHost = globalThis): boolean {
 }
 export const PR_HEADINGS = ["Why", "What changed", "Scope", "Tradeoffs", "Blast Radius", "Verification", "Review tier"];
 const REQUIRED_HEADINGS = ["Why", "Scope"];
+const MAX_SECTION_ITEMS = 3;
 
 const CODE_OPEN = "\u0001";
 const CODE_CLOSE = "\u0002";
@@ -29,7 +31,8 @@ const SHA = /^[0-9a-f]{7,40}$/i;
 const BASELINE_COMMAND = /\b(?:make (?:lint|test|check|ci)|cargo (?:test|clippy|fmt|check|nextest)|bun test|bun run typecheck|tsc|(?:npm|pnpm|yarn) (?:run )?(?:test|lint)|go (?:test|vet)|pytest|ruff|eslint)\b/;
 const PASS_WORD = /\b(?:pass|passes|passed|green|clean|ok)\b|\u2705/i;
 
-interface Unit { kind: "prose" | "heading"; text: string; level: number }
+/** A `rendered` unit is reader-visible text the sentence checks skip: a table cell or raw HTML. */
+interface Unit { kind: "prose" | "heading" | "bullet" | "rendered"; text: string; level: number; inDetails: boolean }
 
 const segmenter = new Intl.Segmenter("en", { granularity: "sentence" });
 
@@ -38,10 +41,12 @@ function collect(markdown: string): { units: Unit[]; hrefs: string[] } | null {
   if (render === undefined) return null;
   const units: Unit[] = [];
   const hrefs: string[] = [];
+  let detailsDepth = 0;
   const push = (kind: Unit["kind"], text: string, level = 0) => {
     const flat = text.replace(/\s+/g, " ").trim();
-    if (flat !== "") units.push({ kind, text: flat, level });
+    if (flat !== "") units.push({ kind, text: flat, level, inDetails: detailsDepth > 0 });
   };
+  const renderedCell = (c: string) => (push("rendered", c), "");
   const children = (c: string) => c;
   const drop = () => "";
   render(markdown, {
@@ -52,13 +57,25 @@ function collect(markdown: string): { units: Unit[]; hrefs: string[] } | null {
       return LABEL_OPEN + c + LABEL_CLOSE;
     },
     image: drop,
-    html: drop,
+    html: (c: string) => {
+      const opens = c.match(/<details\b/gi)?.length ?? 0;
+      const closes = c.match(/<\/details\s*>/gi)?.length ?? 0;
+      detailsDepth = Math.max(0, detailsDepth + opens - closes);
+      if (opens === 0 && closes === 0) push("rendered", c.replace(/<[^>]*>/g, " "));
+      return "";
+    },
     code: drop,
     table: drop,
+    th: renderedCell,
+    td: renderedCell,
     hr: drop,
     paragraph: (c: string) => (push("prose", c), ""),
     heading: (c: string, meta?: { level?: number }) => (push("heading", c, meta?.level ?? 0), ""),
-    listItem: (c: string) => (push("prose", c), ""),
+    listItem: (c: string) => {
+      units.push({ kind: "bullet", text: "", level: 0, inDetails: detailsDepth > 0 });
+      push("prose", c);
+      return "";
+    },
     strong: children,
     emphasis: children,
     strikethrough: children,
@@ -130,6 +147,35 @@ function headingFindings(units: Unit[]): Finding[] {
   return out;
 }
 
+/** Counts each list item once, nested or not, because the parser flattens nesting. A loose item's text reaches `collect` as a paragraph, which is why bullets are their own unit. */
+function sectionFindings(units: Unit[]): Finding[] {
+  const counts = { why: 0, whatChanged: 0 };
+  const seen = { why: false, whatChanged: false };
+  let section: keyof typeof counts | null = null;
+  for (const unit of units) {
+    if (unit.kind === "heading" && unit.level <= 2) {
+      const title = restore(unit.text).toLowerCase();
+      section = title === "why" ? "why" : title === "what changed" ? "whatChanged" : null;
+      if (section) seen[section] = true;
+    } else if (section === "why" && unit.kind === "prose") counts.why += sentences(unit.text).length;
+    else if (section === "whatChanged" && unit.kind === "bullet") counts.whatChanged++;
+  }
+  const out: Finding[] = [];
+  const report = (key: keyof typeof counts, heading: string, noun: string) => {
+    if (!seen[key] || (counts[key] >= 1 && counts[key] <= MAX_SECTION_ITEMS)) return;
+    out.push({ quote: `## ${heading}`, reason: `section has ${counts[key]} ${noun}; the limit is 1-${MAX_SECTION_ITEMS}` });
+  };
+  report("why", "Why", "sentences");
+  report("whatChanged", "What changed", "bullets");
+  return out;
+}
+
+/** Counts what a reader sees on the open page, so fenced code, images, link URLs and `<details>` content are free. A code span counts as one word. */
+function wordCapFindings(units: Unit[]): Finding[] {
+  const words = units.reduce((sum, u) => (u.inDetails ? sum : sum + wordCount(u.text)), 0);
+  return words > MAX_PR_WORDS ? [{ quote: "PR body", reason: `body has ${words} words; the limit is ${MAX_PR_WORDS}` }] : [];
+}
+
 /** Parse failures and a missing Bun.markdown return no findings, so a hook that calls this fails open. */
 export function checkProse(markdown: string, opts: ProseOptions): Finding[] {
   let parsed: ReturnType<typeof collect>;
@@ -145,7 +191,7 @@ export function checkProse(markdown: string, opts: ProseOptions): Finding[] {
     for (const sentence of sentences(unit.text)) findings.push(...sentenceFindings(sentence, opts.pr));
   }
   findings.push(...blobFindings(parsed.units.filter((u) => u.kind === "prose").map((u) => restore(u.text)), parsed.hrefs));
-  if (opts.pr) findings.push(...headingFindings(parsed.units));
+  if (opts.pr) findings.push(...headingFindings(parsed.units), ...sectionFindings(parsed.units), ...wordCapFindings(parsed.units));
 
   const seen = new Set<string>();
   return findings.filter((f) => {

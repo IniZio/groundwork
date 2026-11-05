@@ -6,10 +6,10 @@
 
 import { readHookInput, type HookInput } from "./lib/hook-input.js";
 import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import path from "node:path";
 import type { Node } from "./lib/tree-sitter.js";
 import { getParser } from "./lib/tree-sitter-loader.js";
+import { expandHome, literal, programCalls, type Parse } from "./lib/shell-calls.js";
 import { checkCommitMessage } from "../cli/lint-commit-msg.mjs";
 
 export interface HookResult { stdout: string; stderr: string; exit: number }
@@ -28,27 +28,6 @@ function deny(reason: string): HookResult {
   return { stdout: JSON.stringify({ hookSpecificOutput }) + "\n", stderr: "", exit: 0 };
 }
 
-export function literal(node: Node): string | null {
-  switch (node.type) {
-    case "word":
-    case "number":
-      return node.text.replace(/\\(.)/gs, "$1");
-    case "raw_string":
-      return node.text.slice(1, -1);
-    case "string":
-      if (node.namedChildren.some((c: Node | null) => c?.type !== "string_content")) return null;
-      return node.text.slice(1, -1).replace(/\\([$`"\\\n])/g, "$1");
-    case "concatenation":
-    case "command_name": {
-      const parts = node.namedChildren.map((c: Node | null) => (c ? literal(c) : null));
-      return parts.includes(null) ? null : parts.join("");
-    }
-    default:
-      return null;
-  }
-}
-
-export const LAUNCHERS = new Set(["command", "builtin", "exec", "nohup", "env", "sudo"]);
 const GIT_OPTS_WITH_VALUE = new Set(["-c", "--git-dir", "--work-tree", "--namespace", "--config-env"]);
 const COMMIT_LONG_WITH_VALUE = new Set([
   "author", "date", "template", "reuse-message", "reedit-message", "fixup", "squash", "cleanup", "trailer",
@@ -129,31 +108,17 @@ function commitSource(args: Array<string | null>, cmd: Node, cwd: string): Messa
   return { kind: "none" };
 }
 
-export function expandHome(p: string): string {
-  return p === "~" || p.startsWith("~/") ? path.join(homedir(), p.slice(1)) : p;
-}
-
 // tree-sitter-bash drops a lone `-` written just before a heredoc, so `-F - <<EOF` parses as `-F <<EOF`.
 function droppedDash(cmd: Node, source: string): boolean {
   const next = cmd.nextSibling;
   return cmd.parent?.type === "redirected_statement" && next !== null && source.slice(cmd.endIndex, next.startIndex).trim() === "-";
 }
 
-function findCommits(root: Node, source: string, startCwd: string): CommitCall[] {
+function findCommits(root: Node, source: string, startCwd: string, parse: Parse): CommitCall[] {
   const calls: CommitCall[] = [];
-  let cwd = startCwd;
-  for (const cmd of root.descendantsOfType("command")) {
-    if (!cmd) continue;
-    const name = cmd.childForFieldName("name");
-    let words = [name, ...cmd.childrenForFieldName("argument")].map(n => (n ? literal(n) : null));
-    if (droppedDash(cmd, source)) words.push("-");
-    while (words[0] !== null && words[0] !== undefined && LAUNCHERS.has(words[0])) {
-      words = words.slice(1);
-      while (words[0]?.startsWith("-") || /^\w+=/.test(words[0] ?? "")) words = words.slice(1);
-    }
-    const [head, ...args] = words;
-    if (head === "cd" && args[0]) cwd = path.resolve(cwd, expandHome(args[0]));
-    if (head === null || head === undefined || path.basename(head) !== "git") continue;
+  for (const { cmd, nodes, cwd, source: text } of programCalls("git", root, source, startCwd, parse)) {
+    const args = nodes.slice(1).map(literal);
+    if (droppedDash(cmd, text)) args.push("-");
 
     let gitCwd: string | null = cwd;
     let i = 0;
@@ -189,7 +154,7 @@ export async function check(inp: HookInput): Promise<HookResult> {
     const tree = parser.parser.parse(command);
     if (!tree) return allow();
 
-    for (const call of findCommits(tree.rootNode, command, cwd)) {
+    for (const call of findCommits(tree.rootNode, command, cwd, (source) => parser.parser.parse(source))) {
       const message = messageOf(call.source);
       if (message === null) continue;
       const report = checkCommitMessage(call.cwd, message, { editorUsed: false });

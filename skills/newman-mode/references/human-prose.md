@@ -2,7 +2,7 @@
 
 Applies to PR bodies, `doc/`, READMEs and commit messages. Write from the reviewer's view of the repo at the PR base, never from the dev journal.
 
-The house-rules `pr-body` rule enforces the sentence, link and heading rules below. In a repo that enables it, `gh pr create`, `gh pr edit` and top-level PR comments are denied until the body passes. Run `bun <house-rules>/src/cli/main.ts prose <file> --pr` on a draft before you open the PR.
+The house-rules `pr-body` rule enforces the sentence, link and heading rules below, plus the `## Why`, `## What changed` and word limits. In a repo that enables it, `gh pr create`, `gh pr edit`, `gh api` PR writes and top-level PR comments are denied until the body passes, behind a wrapper such as `timeout` too. Run `bun <house-rules>/src/cli/main.ts prose <file> --pr` on a draft before you open the PR.
 
 ## Sentences
 
@@ -54,5 +54,7 @@ pstack's `opening-a-pr.md` sets the sections. Use `##` headings in this order an
 5. `## Blast Radius`. Who or what it touches, and why that is safe or risky.
 6. `## Verification`. Each bullet is a real run and what it showed, with the output attached per "Show the proof".
 7. `## Review tier`. Must, should, optional or skip, with the stack position.
+
+The body holds at most 200 words. Headings count. A code span counts as one word and a link counts by its label. Fenced code, images and `<details>` blocks do not count, so long proof goes in `<details>`.
 
 Review the finished body with a fresh subagent that gets only the body, not your plans. Apply its cuts.

@@ -1,6 +1,6 @@
 {
   "name": "groundwork",
-  "version": "3.10.2",
+  "version": "3.10.3",
   "description": "groundwork — Newman's working conventions as one mode skill, on top of pstack and house-rules",
   "types": "./types/index.d.ts",
   "dependencies": [
@@ -9,7 +9,7 @@
     },
     {
       "name": "house-rules",
-      "version": "~0.23.0"
+      "version": "~0.24.0"
     }
   ],
   "hooks": {

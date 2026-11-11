@@ -55,7 +55,7 @@ Repo-level config lives in `.house-rules.json` at the repo root:
 
 | Rule | Allowed values |
 |---|---|
-| commit-message | severity `error` only; `preset`: `handbook`, `conventional`, or `subject-only` |
+| commit-message | severity `off` or `error` (default `error`); `preset`: `handbook`, `conventional`, or `subject-only` |
 | comment-density | severity `error` only; no options (the cap is fixed at 5 comment lines per 100 added lines) |
 | artifact-structure | severity `error` only; options `govern`, `types`, `forbidden` (see Doc-type manifest below) |
 | type-escape-hatches | severity `off` or `warn` (default `warn`); option `allowInTypeGuards` (boolean, default `false`) |
@@ -82,18 +82,18 @@ The `house-rules:configure` skill walks an agent through a rejected commit messa
 
 ## Commit messages
 
-House-rules checks commit messages only in a repo that has `.house-rules.json`. The commit-message rule and its preset decide what passes. Two hooks enforce it.
+House-rules checks commit messages in every repo, with or without `.house-rules.json`. The commit-message rule and its preset decide what passes. Every preset forbids a commit body. This overrides any handbook or git-workflow guidance that asks for a body, and the deny reason says so. Two hooks enforce it.
 
 - **Guard.** A PreToolUse Bash hook denies a `git commit` whose message fails, and the deny reason lists each failing line. It reads the message from every `-m` (joined as git joins them), `-F <file>`, `-F -` fed by a heredoc, a here-string or a `<` redirect, and `--amend -m`. It follows `git -C <dir>`, `cd <dir> &&`, chained commands, any wrapper before `git` (`timeout`, `xargs`, `nice`) and a string run by `eval` or `bash -c`. It parses the command with tree-sitter-bash. A commit inside a script file or a string given to another program passes. A commit with no message source opens an editor and passes through, as does a message built from shell expansion, a piped `-F -`, and a `-F` file that does not exist yet. A command or config that cannot be parsed passes; a message that fails the lint is always denied.
 - **Git hook.** At SessionStart, house-rules writes `commit-msg` into the repo's hooks dir (`git rev-parse --git-path hooks`, so `core.hooksPath` and linked worktrees resolve to the right place). The hook runs `src/cli/lint-commit-msg.mjs` with bun, or with node when bun is missing. It honours `core.commentChar` and `commit.cleanup` as git would apply them. If neither runtime is on `PATH`, or the plugin path in the hook no longer exists, the hook prints one line and lets the commit through. Each session rewrites the plugin path, so a plugin upgrade keeps the hook working.
 
-In a repo without `.house-rules.json`, the installer writes nothing and prints nothing, and it deletes a `commit-msg` hook that carries either marker below. Otherwise it writes the hook only when the file is absent or carries house-rules' marker line (`# HOUSE-RULES-COMMIT-MSG`) or the older `# GROUNDWORK-COMMIT-MSG` marker. It never overwrites another hook. When another hook exists, or `core.hooksPath` points at husky, lefthook or pre-commit, it prints one line and installs nothing. To check commit messages from such a hook, call this line from it:
+In a repo whose `.house-rules.json` sets `"commit-message": "off"`, the installer writes nothing and prints nothing, and it deletes a `commit-msg` hook that carries either marker below. Otherwise it writes the hook only when the file is absent or carries house-rules' marker line (`# HOUSE-RULES-COMMIT-MSG`) or the older `# GROUNDWORK-COMMIT-MSG` marker. It never overwrites another hook. When another hook exists, or `core.hooksPath` points at husky, lefthook or pre-commit, it prints one line and installs nothing. To check commit messages from such a hook, call this line from it:
 
 ```sh
 house-rules lint-commit-msg "$1"
 ```
 
-`house-rules lint-commit-msg <file>` exits 1 with the failing lines when the message fails and exits 0 otherwise. To opt a repo out, leave out `.house-rules.json`. To keep house-rules from installing the git hook, put a `commit-msg` hook of your own in the hooks dir.
+`house-rules lint-commit-msg <file>` exits 1 with the failing lines when the message fails and exits 0 otherwise. To opt a repo out, set `{"rules":{"commit-message":"off"}}` in `.house-rules.json`. The config guard denies that edit from an agent, so only a human can make it. To keep house-rules from installing the git hook, put a `commit-msg` hook of your own in the hooks dir.
 
 ## Doc-type manifest (artifact-structure)
 

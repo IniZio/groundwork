@@ -25,11 +25,18 @@ describe("house-rules lint-commit-msg", () => {
     expect(lint(makeRepo(), "fix: good message\n").status).toBe(0);
   });
 
-  test("a repo without .house-rules.json exits 0", () => {
-    expect(lint(makeRepo(null), "bad message\n").status).toBe(0);
+  test("a repo without .house-rules.json rejects a body", () => {
+    const r = lint(makeRepo(null), "fix: good message\n\nExplains what and why.\n");
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("No body is permitted");
+    expect(r.stderr).toContain("the house-rules default (no .house-rules.json)");
+  });
+
+  test("commit-message off exits 0", () => {
+    expect(lint(makeRepo({ rules: { "commit-message": "off" } }), "bad message\n").status).toBe(0);
   });
 
   test("an invalid .house-rules.json exits 0", () => {
-    expect(lint(makeRepo({ rules: { "commit-message": "off" } }), "bad message\n").status).toBe(0);
+    expect(lint(makeRepo({ rules: { "commit-message": "warn" } }), "bad message\n").status).toBe(0);
   });
 });

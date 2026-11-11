@@ -19,7 +19,7 @@ export const SEVERITIES = Object.freeze(["error"]);
 export const WARN_SEVERITIES = Object.freeze(["off", "warn"]);
 export const OPT_IN_SEVERITIES = Object.freeze(["off", "error"]);
 export const RULE_SEVERITIES = Object.freeze({
-  "commit-message": SEVERITIES,
+  "commit-message": OPT_IN_SEVERITIES,
   "comment-density": SEVERITIES,
   "artifact-structure": SEVERITIES,
   "type-escape-hatches": WARN_SEVERITIES,

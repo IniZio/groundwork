@@ -43,7 +43,7 @@ describe('lintCommitMessage – handbook preset', () => {
 
   it('denies a body after a blank line', () => {
     const result = lintCommitMessage('Fix x\n\nbody', opts)
-    expect(result.violations.some(v => v.group === 'body' && v.reason === 'No body is permitted in this repository')).toBe(true)
+    expect(result.violations.some(v => v.group === 'body' && v.reason === 'No body is permitted in this repository; this overrides any handbook or git-workflow guidance that asks for a body')).toBe(true)
   })
 
   it('allows subject only, with or without trailing newline', () => {

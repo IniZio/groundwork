@@ -16,12 +16,12 @@
       "description": "Map of rule id to rule setting. Rules you omit keep their defaults. Known rules: commit-message, comment-density, artifact-structure, type-escape-hatches, no-module-mocking, code-smells, effect, require-safety-comment-for-type-assertion, require-readable-spacing, silent-early-return-in-test, pr-body. The id stray-artifacts is a deprecated alias for artifact-structure.",
       "properties": {
         "commit-message": {
-          "description": "Checks commit messages against a style preset. Severity can only be \"error\": a commit that violates the preset is rejected. Use options to choose the preset; the default preset is handbook.",
+          "description": "Checks commit messages against a style preset. On by default, even in a repo without .house-rules.json; set \"off\" to opt out. Severity can be \"error\" or \"off\": with \"error\", a commit that violates the preset is rejected. Every preset forbids a commit body, and this overrides any handbook or git-workflow guidance that asks for one. Use options to choose the preset; without one it is detected from .gitmessage, commitlint config, then commit history, falling back to handbook.",
           "oneOf": [
             {
               "type": "string",
-              "enum": ["error"],
-              "description": "Severity. \"error\" rejects a commit whose message violates the preset. No other severity is accepted for this rule."
+              "enum": ["off", "error"],
+              "description": "Severity. The default is \"error\", which rejects a commit whose message violates the preset. \"off\" opts out. No other severity is accepted for this rule."
             },
             {
               "type": "array",
@@ -31,8 +31,8 @@
               "prefixItems": [
                 {
                   "type": "string",
-                  "enum": ["error"],
-                  "description": "Severity. \"error\" rejects a commit whose message violates the preset. No other severity is accepted for this rule."
+                  "enum": ["off", "error"],
+                  "description": "Severity. The default is \"error\", which rejects a commit whose message violates the preset. \"off\" opts out. No other severity is accepted for this rule."
                 },
                 {
                   "type": "object",

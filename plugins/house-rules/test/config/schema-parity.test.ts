@@ -184,7 +184,7 @@ const fixtures: [string, unknown, boolean][] = [
   ["require-readable-spacing allowInTypeGuards", { rules: { "require-readable-spacing": ["warn", { allowInTypeGuards: true }] } }, false],
   ["bad severity fatal", { rules: { "comment-density": "fatal" } }, false],
   ["commit-message warn", { rules: { "commit-message": "warn" } }, false],
-  ["commit-message off", { rules: { "commit-message": "off" } }, false],
+  ["commit-message off", { rules: { "commit-message": "off" } }, true],
   ["commit-message [warn]", { rules: { "commit-message": ["warn"] } }, false],
   ["bad preset", { rules: { "commit-message": ["error", { preset: "bogus" }] } }, false],
   ["empty tuple", { rules: { "comment-density": [] } }, false],

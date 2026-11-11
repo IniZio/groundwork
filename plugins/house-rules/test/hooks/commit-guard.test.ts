@@ -63,8 +63,8 @@ describe("commit guard denies a failing message and allows a passing one", () =>
   test("git -C <dir> lints against the target repo, not the session cwd", async () => {
     expect((await decide(`git -C ${repo} commit -m "${BAD}"`, outside)).decision).toBe("deny");
     expect((await decide(`git -C ${repo} commit -m "${GOOD}"`, outside)).decision).toBe("allow");
-    const unconfigured = makeRepo(null);
-    expect((await decide(`git -C ${unconfigured} commit -m "${BAD}"`)).decision).toBe("allow");
+    const off = makeRepo({ rules: { "commit-message": "off" } });
+    expect((await decide(`git -C ${off} commit -m "${BAD}"`)).decision).toBe("allow");
   });
 
   test("git -C <dir> resolves -F relative to the target repo", async () => {
@@ -106,13 +106,26 @@ describe("commit guard allows what it cannot or should not lint", () => {
   });
 
   test("an invalid .house-rules.json fails open", async () => {
-    const invalid = makeRepo({ rules: { "commit-message": "off" } });
+    const invalid = makeRepo({ rules: { "commit-message": "warn" } });
     expect((await decide(`git commit -m "${BAD}"`, invalid)).decision).toBe("allow");
   });
 
-  test("no .house-rules.json allows a failing message", async () => {
+  test("no .house-rules.json still denies a failing message", async () => {
     const bare = makeRepo(null);
-    expect((await decide(`git commit -m "${BAD}"`, bare)).decision).toBe("allow");
+    expect((await decide(`git commit -m "${BAD}"`, bare)).decision).toBe("deny");
+  });
+
+  test("no .house-rules.json denies a body and says house-rules overrides the handbook", async () => {
+    const bare = makeRepo(null);
+    const r = await decide(`git commit -m "fix: good subject" -m "Explains what and why."`, bare);
+    expect(r.decision).toBe("deny");
+    expect(r.reason).toContain("No body is permitted");
+    expect(r.reason).toContain("overrides any handbook or git-workflow guidance");
+  });
+
+  test("commit-message off allows a failing message", async () => {
+    const off = makeRepo({ rules: { "commit-message": "off" } });
+    expect((await decide(`git commit -m "${BAD}"`, off)).decision).toBe("allow");
   });
 
   test("outside a git repo allows", async () => {

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { git, makeRepo, tempDir, runPluginHook, PLUGIN_ROOT } from "./commit-sandbox.js";
 
 const MARKER = "# HOUSE-RULES-COMMIT-MSG";
+const OFF = { rules: { "commit-message": "off" } };
 const FOREIGN = "#!/bin/sh\necho custom hook\n";
 const STALE_GROUNDWORK =
   '#!/bin/bash\n# GROUNDWORK-COMMIT-MSG v2.13.0\n# Managed by groundwork — do not edit.\nGROUNDWORK_HOOKS_LIB="/gone/hooks/lib"\n';
@@ -52,17 +53,30 @@ describe("commit-msg installer ownership", () => {
     expect(readFileSync(hookAt(repo), "utf8")).not.toContain("GROUNDWORK");
   });
 
-  test("a repo without .house-rules.json gets no hook and no output", () => {
+  test("a repo without .house-rules.json gets the hook", () => {
     const repo = makeRepo(null);
+    const r = install(repo);
+    expect(r.exit).toBe(0);
+    expectInstalled(hookAt(repo));
+  });
+
+  test("a repo with an invalid .house-rules.json keeps the hook", () => {
+    const repo = makeRepo({ rules: { "commit-message": "warn" } });
+    install(repo);
+    expectInstalled(hookAt(repo));
+  });
+
+  test("a repo that turns commit-message off gets no hook and no output", () => {
+    const repo = makeRepo(OFF);
     const r = install(repo);
     expect(r.exit).toBe(0);
     expect(r.stdout).toBe("");
     expect(existsSync(hookAt(repo))).toBe(false);
   });
 
-  test("a repo without .house-rules.json loses a stale groundwork or house-rules hook", () => {
+  test("a repo that turns commit-message off loses a stale groundwork or house-rules hook", () => {
     for (const stale of [STALE_GROUNDWORK, `#!/bin/sh\n${MARKER}\ncli='/old/lint-commit-msg.mjs'\n`]) {
-      const repo = makeRepo(null);
+      const repo = makeRepo(OFF);
       writeFileSync(hookAt(repo), stale, { mode: 0o755 });
       const r = install(repo);
       expect(r.exit).toBe(0);
@@ -71,8 +85,8 @@ describe("commit-msg installer ownership", () => {
     }
   });
 
-  test("a repo without .house-rules.json keeps a foreign hook and prints nothing", () => {
-    const repo = makeRepo(null);
+  test("a repo that turns commit-message off keeps a foreign hook and prints nothing", () => {
+    const repo = makeRepo(OFF);
     writeFileSync(hookAt(repo), FOREIGN, { mode: 0o755 });
     const r = install(repo);
     expect(readFileSync(hookAt(repo), "utf8")).toBe(FOREIGN);

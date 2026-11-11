@@ -1,10 +1,11 @@
 /**
  * SessionStart: installs the house-rules commit-msg hook into the repo's effective hooks dir.
  * Rewrites only a hook house-rules owns, so each session repoints it at the current plugin version.
- * A repo without .house-rules.json has nothing to lint, so it gets no hook and loses a stale owned one.
+ * A repo that turns commit-message off gets no hook and loses a stale owned one.
  */
 
 import { readHookInput } from "./lib/hook-input.js";
+import { resolveConfig } from "../config/resolve.mjs";
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
@@ -42,6 +43,15 @@ function git(cwd: string, args: string[]): string | null {
   return r.status === 0 ? r.stdout.trim() : null;
 }
 
+/** An invalid config keeps the hook: the hook itself fails open on it, and a fixed config needs no new session. */
+function commitLintOff(root: string): boolean {
+  try {
+    return resolveConfig(root).rules["commit-message"].severity === "off";
+  } catch {
+    return false;
+  }
+}
+
 /** Returns the one line to show the session, or "" when there is nothing to say. */
 function install(cwd: string): string {
   const hooksDir = git(cwd, ["rev-parse", "--path-format=absolute", "--git-path", "hooks"]);
@@ -49,10 +59,11 @@ function install(cwd: string): string {
   const hook = path.join(hooksDir, "commit-msg");
   const current = existsSync(hook) ? readFileSync(hook, "utf8") : null;
   const root = git(cwd, ["rev-parse", "--show-toplevel"]);
-  if (root === null || !existsSync(path.join(root, ".house-rules.json"))) {
+  if (root === null) return "";
+  if (commitLintOff(root)) {
     if (current === null || !ownedBy(current)) return "";
     unlinkSync(hook);
-    return `house-rules: removed the commit-msg hook at ${hook}; this repo has no .house-rules.json`;
+    return `house-rules: removed the commit-msg hook at ${hook}; .house-rules.json turns commit-message off`;
   }
   const wiring = `to check commit messages, call \`house-rules lint-commit-msg "$1"\` from it (house-rules is ${path.join(PLUGIN_ROOT, "bin/house-rules")}).`;
 

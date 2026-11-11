@@ -56,7 +56,7 @@ export function cleanMessage(raw, { commentChar, cleanup, editorUsed }) {
   return lines.join('\n').replace(/\n{3,}/g, '\n\n').replace(/^\n+|\n+$/g, '')
 }
 
-/** Returns the lint report, or null when the message passes or the repo does not configure house-rules. */
+/** Returns the lint report, or null when the message passes or the repo turns the rule off. */
 export function checkCommitMessage(cwd, raw, { editorUsed }) {
   const repoRoot = gitOut(cwd, ['rev-parse', '--show-toplevel'])
   if (repoRoot === '') return null
@@ -66,7 +66,7 @@ export function checkCommitMessage(cwd, raw, { editorUsed }) {
   } catch {
     return null
   }
-  if (resolved.file === null) return null
+  if (resolved.rules['commit-message'].severity === 'off') return null
 
   const message = cleanMessage(stripSessionAttribution(raw), {
     commentChar: gitOut(repoRoot, ['config', '--get', 'core.commentChar']),
@@ -76,7 +76,7 @@ export function checkCommitMessage(cwd, raw, { editorUsed }) {
   const { violations } = lintCommitMessage(message, { preset: resolved.rules['commit-message'].options.preset })
   if (violations.length === 0) return null
   const lines = [...violations].sort((a, b) => a.line - b.line).map((v) => `  line ${v.line}: ${v.reason}`)
-  lines.push(`  set by ${resolved.file}: ${pointer(resolved, 'commit-message', 'preset')}`)
+  lines.push(`  set by ${resolved.file ?? 'the house-rules default (no .house-rules.json)'}: ${pointer(resolved, 'commit-message', 'preset')}`)
   return lines.join('\n')
 }
 

@@ -367,8 +367,8 @@ describe("parseConfig invalid input", () => {
     expectConfigError('{"rules":{"artifact-structure":"fatal"}}', SA, SEV);
   });
 
-  it("rejects off and warn severities for every rule", () => {
-    for (const rule of [CM, CD, SA]) {
+  it("rejects off and warn severities for every error-only rule", () => {
+    for (const rule of [CD, SA]) {
       for (const sev of ["off", "warn"]) {
         const err = capture(`{"rules":{${JSON.stringify(rule.slice(7, -2))}:"${sev}"}}`);
         expect(err.path).toBe(rule);
@@ -387,11 +387,10 @@ describe("parseConfig invalid input", () => {
     expectConfigError('{"rules":{"comment-density":["loud"]}}', `${CD}[0]`, SEV);
   });
 
-  it("restricts commit-message severity to error", () => {
-    for (const sev of ["warn", "off"]) {
-      expectConfigError(`{"rules":{"commit-message":"${sev}"}}`, CM, ["error"]);
-      expectConfigError(`{"rules":{"commit-message":["${sev}"]}}`, `${CM}[0]`, ["error"]);
-    }
+  it("restricts commit-message severity to off or error", () => {
+    expectConfigError('{"rules":{"commit-message":"warn"}}', CM, ["off", "error"]);
+    expectConfigError('{"rules":{"commit-message":["warn"]}}', `${CM}[0]`, ["off", "error"]);
+    expect(parseConfig('{"rules":{"commit-message":"off"}}').rules["commit-message"]?.severity).toBe("off");
   });
 
   it("rejects non-object options", () => {
@@ -441,7 +440,7 @@ describe("parseConfig invalid input", () => {
       '{"rules":{"artifact-structure":1}}',
       '{"rules":{"artifact-structure":"fatal"}}',
       '{"rules":{"comment-density":["loud"]}}',
-      '{"rules":{"commit-message":"off"}}',
+      '{"rules":{"commit-message":"warn"}}',
       '{"rules":{"comment-density":["error","x"]}}',
       '{"rules":{"comment-density":["error",{"foo":1}]}}',
       '{"rules":{"commit-message":["error",{"preset":"angular"}]}}',
@@ -469,7 +468,7 @@ describe("exported constants", () => {
     ]);
     expect(SEVERITIES).toEqual(["error"]);
     expect(RULE_SEVERITIES).toEqual({
-      "commit-message": ["error"],
+      "commit-message": ["off", "error"],
       "comment-density": ["error"],
       "artifact-structure": ["error"],
       "type-escape-hatches": ["off", "warn"],

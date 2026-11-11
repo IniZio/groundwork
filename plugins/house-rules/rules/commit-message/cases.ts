@@ -34,7 +34,7 @@ export const cases: RuleCases = {
     {
       why: 'handbook preset: body is not allowed, subject line only',
       code: 'Fix null-pointer in token refresh\n\nThe refresh path read a stale token.',
-      findings: [{ ruleId: 'commit-message', message: 'No body is permitted in this repository' }],
+      findings: [{ ruleId: 'commit-message', message: 'No body is permitted in this repository; this overrides any handbook or git-workflow guidance that asks for a body' }],
     },
     {
       why: 'handbook preset: conventional-style type prefix not an imperative verb',

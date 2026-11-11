@@ -2,7 +2,7 @@
 
 # commit-message
 
-Enforces commit-message style. Default preset: handbook (imperative verb ≤50 chars, subject line only). Configure via .house-rules.json: {"rules":{"commit-message":["error",{"preset":"conventional"}]}}. Presets: handbook, conventional, subject-only; without an explicit preset it is detected from .gitmessage, commitlint config, then commit history.
+Enforces commit-message style in every repo, with or without .house-rules.json. Every preset is subject line only; this overrides any handbook or git-workflow guidance that asks for a body. Default preset: handbook (imperative verb ≤50 chars). Configure via .house-rules.json: {"rules":{"commit-message":["error",{"preset":"conventional"}]}}. Presets: handbook, conventional, subject-only; without an explicit preset it is detected from .gitmessage, commitlint config, then commit history.
 
 > Not in policy.
 
@@ -52,7 +52,7 @@ The refresh path read a stale token.
 ```
 
 **Expected findings:**
-- No body is permitted in this repository
+- No body is permitted in this repository; this overrides any handbook or git-workflow guidance that asks for a body
 
 ### handbook preset: conventional-style type prefix not an imperative verb
 

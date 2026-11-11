@@ -33,7 +33,7 @@ export const SEVERITIES: readonly ["error"];
 export const WARN_SEVERITIES: readonly ["off", "warn"];
 export const OPT_IN_SEVERITIES: readonly ["off", "error"];
 export const RULE_SEVERITIES: {
-  readonly "commit-message": readonly ["error"];
+  readonly "commit-message": readonly ["off", "error"];
   readonly "comment-density": readonly ["error"];
   readonly "artifact-structure": readonly ["error"];
   readonly "type-escape-hatches": readonly ["off", "warn"];

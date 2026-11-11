@@ -21,11 +21,12 @@ Take the rule, the active value, and the source from it. Step 1's output confirm
 
 Presets:
 - `handbook`: subject starts with Add, Fix, Remove, Update, Refactor or Test; at most 50 chars; no body.
-- `conventional`: `type(scope)!: subject`; at most 72 chars; types feat fix docs style refactor perf test build ci chore revert.
+- `conventional`: `type(scope)!: subject`; at most 72 chars; types feat fix docs style refactor perf test build ci chore revert; no body.
 - `subject-only`: subject format unchecked; no body.
 
 Source precedence: explicit config, then `.gitmessage` (subject-only), then commitlint config (conventional), then git history (at least 50% of the last 20 commits conventional), then the handbook default.
 
+- "No body is permitted": drop the body and keep the subject line. No preset allows a body. House-rules overrides the handbook's git-workflow body section and any other guidance that asks for one, so never pin a preset or edit config to keep a body.
 - Repo's real convention matches the active preset: rewrite the commit message to it.
 - Repo's real convention differs (history is conventional, active preset is the default): pin the matching preset.
 - Want a preset that history and config do not show, or to remove rules or the file: stop and ask the user. This is a human decision, and the config guard denies the edit.

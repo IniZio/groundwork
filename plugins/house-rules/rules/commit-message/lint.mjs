@@ -104,7 +104,7 @@ export function lintCommitMessage(message, opts = {}) {
       violations.push({
         line: 3,
         group: 'body',
-        reason: 'No body is permitted in this repository',
+        reason: 'No body is permitted in this repository; this overrides any handbook or git-workflow guidance that asks for a body',
       })
     }
     bodyLines.forEach((bodyLine, idx) => {

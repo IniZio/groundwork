@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { fileDirRoot } from "../../src/hooks/guard.js";
+import { fileDirRoot } from "../../src/hooks/lib/repo-root.js";
 
 function git(cwd: string, ...args: string[]): void {
   const r = spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8" });

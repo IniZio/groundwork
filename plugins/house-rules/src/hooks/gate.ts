@@ -134,7 +134,7 @@ export async function run(
     const unfixable: UnfixableEntry[] = [];
 
     const checkRoot = async (root: string) => {
-      const policy: Record<string, PolicyEntry> = { ...policyForRoot(policyDir(root, outerRoot)), ...(opts?.testOnly_policy ?? {}) };
+      const policy = { ...policyForRoot(policyDir(root, outerRoot)), ...(opts?.testOnly_policy ?? {}) };
       const ctx = buildContext({
         repoRoot: root,
         mode: 'gate',

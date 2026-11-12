@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync, writeFileSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import os from "node:os";
@@ -153,6 +153,7 @@ function repoCandidates(repoRoot: string): Candidate[] {
     const abs = path.join(repoRoot, rel);
     try {
       const st = statSync(abs);
+      if (st.isDirectory() && existsSync(path.join(abs, ".git"))) out.push(...repoCandidates(abs));
       if (!st.isFile()) continue;
       out.push({ abs, untracked: untracked.has(rel), changedMs: Math.max(st.mtimeMs, st.ctimeMs), bornMs: st.birthtimeMs });
     } catch { continue; }

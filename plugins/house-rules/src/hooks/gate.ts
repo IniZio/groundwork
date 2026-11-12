@@ -9,12 +9,13 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { buildContext } from '../engine/context.js';
 import { loadRules } from '../engine/registry.js';
-import { runRules, coverageReport, formatCoverage, grammarWarnings, type FindingWithSeverity } from '../engine/run.js';
+import { runRules, coverageReport, formatCoverage, grammarWarnings, type Coverage, type FindingWithSeverity } from '../engine/run.js';
 import type { ParserFactory } from '../hooks/languages/parse.js';
 import { readBaseline, subtractBaseline } from '../engine/baseline.js';
 import { policyForRoot, DEFAULT_IGNORE, type PolicyEntry } from '../engine/policy.js';
 import { touchedFiles, runningAgentIds } from './lib/work-scope.js';
 import { readHookInput, type HookInput } from './lib/hook-input.js';
+import { fileDirRoot, policyDir } from './lib/repo-root.js';
 import { formatBlock, buildFull, formatShortReason, type RuleSummary } from './lib/block-format.js';
 import type { Rule, ScopedFile } from '../engine/types.js';
 
@@ -104,38 +105,139 @@ export async function run(
     }
     if (!repoRoot) return silentAllow();
 
+    const outerRoot = repoRoot;
     const rulesDir = path.resolve(import.meta.dir, '../../rules');
     const rules = opts?.testOnly_rules ?? await loadRules(rulesDir);
-    const policy: Record<string, PolicyEntry> = { ...policyForRoot(repoRoot), ...(opts?.testOnly_policy ?? {}) };
-    const ctx = buildContext({
-      repoRoot,
-      mode: 'gate',
+    const nestedRoots = new Set<string>();
+    for (const f of touchedFiles({
+      event: event as 'Stop' | 'SubagentStop',
       transcriptPath: relevantTranscriptPath,
       sessionId,
-      event: event as 'Stop' | 'SubagentStop',
+      agentTranscriptPath,
       runningAgentIds: running,
-      parserFactory: opts?.testOnly_parserFactory,
-    });
+    })) {
+      if (!f.startsWith(outerRoot + path.sep)) continue;
+      const r = fileDirRoot(f, outerRoot);
+      if (r !== null && r !== outerRoot) nestedRoots.add(r);
+    }
 
-    const allFindings = await runRules(rules, ctx, policy, DEFAULT_IGNORE);
-    const repoRootPrefix = repoRoot + path.sep;
-    const inRepo = (p: string) => p === repoRoot || p.startsWith(repoRootPrefix);
-    const cov = await coverageReport(rules, ctx);
-    const absCov = {
-      notChecked: cov.notChecked.map(p => path.resolve(repoRoot, p)).filter(inRepo),
-      partiallyChecked: cov.partiallyChecked
-        .map(e => ({ ...e, path: path.resolve(repoRoot, e.path) }))
-        .filter(e => inRepo(e.path)),
-      failed: cov.failed
-        .map(e => ({ ...e, path: path.resolve(repoRoot, e.path) }))
-        .filter(e => inRepo(e.path)),
+    // Every opts key the gate does not consume is a rule's test hook; forward it unread.
+    const { testOnly_tmpDir, testOnly_rules, testOnly_policy, testOnly_parserFactory, ...testOnly } = opts ?? {};
+    const testOnlyArg = Object.keys(testOnly).length > 0
+      ? testOnly as Record<string, unknown>
+      : undefined;
+
+    const covs: Coverage[] = [];
+    const warnFindings: FindingWithSeverity[] = [];
+    const strayErrors: FindingWithSeverity[] = [];
+    const fixedFiles: FixedFile[] = [];
+    const unfixable: UnfixableEntry[] = [];
+
+    const checkRoot = async (root: string) => {
+      const policy: Record<string, PolicyEntry> = { ...policyForRoot(policyDir(root, outerRoot)), ...(opts?.testOnly_policy ?? {}) };
+      const ctx = buildContext({
+        repoRoot: root,
+        mode: 'gate',
+        transcriptPath: relevantTranscriptPath,
+        sessionId,
+        event: event as 'Stop' | 'SubagentStop',
+        runningAgentIds: running,
+        parserFactory: opts?.testOnly_parserFactory,
+      });
+
+      const allFindings = await runRules(rules, ctx, policy, DEFAULT_IGNORE);
+      const inRoot = (p: string) => p === root || p.startsWith(root + path.sep);
+      const cov = await coverageReport(rules, ctx);
+      covs.push({
+        notChecked: cov.notChecked.map(p => path.resolve(root, p)).filter(inRoot),
+        partiallyChecked: cov.partiallyChecked
+          .map(e => ({ ...e, path: path.resolve(root, e.path) }))
+          .filter(e => inRoot(e.path)),
+        failed: cov.failed
+          .map(e => ({ ...e, path: path.resolve(root, e.path) }))
+          .filter(e => inRoot(e.path)),
+      });
+      const baseline = await readBaseline(path.join(root, '.house-rules', 'baseline.json'));
+      const unbaselined = subtractBaseline(allFindings, baseline);
+      const outerRel = (f: FindingWithSeverity) => ({ ...f, path: path.relative(outerRoot, path.join(root, f.path)) });
+      warnFindings.push(...unbaselined.filter(f => f.severity === 'warn').map(outerRel));
+      strayErrors.push(...unbaselined.filter(f => f.ruleId === 'artifact-structure' && f.severity === 'error').map(outerRel));
+
+      const fixableFindings = unbaselined.filter(f =>
+        f.severity === 'error' &&
+        rules.find(r => r.id === f.ruleId)?.fix != null &&
+        policy[f.ruleId]?.autofix === true
+      );
+      const fileByRelPath = new Map((ctx.files ?? []).map(f => [f.path, f]));
+      const fixableFindingMap = new Map<string, FindingWithSeverity>();
+      for (const f of fixableFindings) {
+        fixableFindingMap.set(`${f.ruleId}::${f.path}`, f);
+      }
+
+      for (const rule of rules) {
+        if (!rule.fix) continue;
+        const ruleFindings = fixableFindings.filter(f => f.ruleId === rule.id);
+        if (ruleFindings.length === 0) continue;
+
+        const seenPaths = new Set<string>();
+        const fixFiles: ScopedFile[] = [];
+        for (const finding of ruleFindings) {
+          if (!seenPaths.has(finding.path)) {
+            seenPaths.add(finding.path);
+            const sf = fileByRelPath.get(finding.path);
+            if (sf) fixFiles.push(sf);
+          }
+        }
+
+        const result = await rule.fix(
+          { ...ctx, files: fixFiles },
+          {
+            caller: {
+              source: 'gate',
+              sessionId,
+              event: event as 'Stop' | 'SubagentStop',
+              ledgerDir: opts?.testOnly_tmpDir
+                ? path.join(opts.testOnly_tmpDir, 'autofix-ledger')
+                : undefined,
+              shadowDir: opts?.testOnly_tmpDir ?? os.tmpdir(),
+            },
+            testOnly: testOnlyArg,
+          },
+        );
+
+        for (const r of result.files) {
+          const abs = path.join(root, r.path);
+          const finding = fixableFindingMap.get(`${rule.id}::${r.path}`);
+          if (r.status === 'fixed') {
+            fixedFiles.push({
+              path: abs,
+              removed: r.removed ?? 0,
+              kept: r.kept ?? 0,
+              total: r.total ?? 0,
+              addedCount: r.addedLines ?? 0,
+            });
+          } else {
+            unfixable.push({
+              path: abs,
+              ruleId: rule.id,
+              message: finding?.message ?? '',
+              reason: r.reason,
+              notice: r.notice,
+            });
+          }
+        }
+      }
+    };
+    await checkRoot(outerRoot);
+    for (const root of nestedRoots) await checkRoot(root);
+
+    const absCov: Coverage = {
+      notChecked: covs.flatMap(c => c.notChecked),
+      partiallyChecked: covs.flatMap(c => c.partiallyChecked),
+      failed: covs.flatMap(c => c.failed),
     };
     const coverageText = formatCoverage(absCov, "house-rules coverage:", "  ").join("\n");
     const grammar = grammarWarnings(absCov);
-    const baselinePath = path.join(repoRoot, '.house-rules', 'baseline.json');
-    const baseline = await readBaseline(baselinePath);
-    const unbaselined = subtractBaseline(allFindings, baseline);
-    const warnFindings = unbaselined.filter(f => f.severity === 'warn');
     const WARN_CAP = 10;
     const warnLines = warnFindings.length === 0 ? [] : [
       "house-rules warnings:",
@@ -171,89 +273,6 @@ export async function run(
       stderr: "",
       exit: 0,
     });
-
-    const fixableFindings = unbaselined.filter(f =>
-      f.severity === 'error' &&
-      rules.find(r => r.id === f.ruleId)?.fix != null &&
-      policy[f.ruleId]?.autofix === true
-    );
-    const strayErrors = unbaselined.filter(f => f.ruleId === 'artifact-structure' && f.severity === 'error');
-
-    if (fixableFindings.length === 0 && strayErrors.length === 0) {
-      if (warnings.length > 0) {
-        return warnOnly();
-      }
-      return allow();
-    }
-
-    const fileByRelPath = new Map((ctx.files ?? []).map(f => [f.path, f]));
-    const fixableFindingMap = new Map<string, FindingWithSeverity>();
-    for (const f of fixableFindings) {
-      fixableFindingMap.set(`${f.ruleId}::${f.path}`, f);
-    }
-
-    // Every opts key the gate does not consume is a rule's test hook; forward it unread.
-    const { testOnly_tmpDir, testOnly_rules, testOnly_policy, testOnly_parserFactory, ...testOnly } = opts ?? {};
-    const testOnlyArg = Object.keys(testOnly).length > 0
-      ? testOnly as Record<string, unknown>
-      : undefined;
-
-    const fixedFiles: FixedFile[] = [];
-    const unfixable: UnfixableEntry[] = [];
-
-    for (const rule of rules) {
-      if (!rule.fix) continue;
-      const ruleFindings = fixableFindings.filter(f => f.ruleId === rule.id);
-      if (ruleFindings.length === 0) continue;
-
-      const seenPaths = new Set<string>();
-      const fixFiles: ScopedFile[] = [];
-      for (const finding of ruleFindings) {
-        if (!seenPaths.has(finding.path)) {
-          seenPaths.add(finding.path);
-          const sf = fileByRelPath.get(finding.path);
-          if (sf) fixFiles.push(sf);
-        }
-      }
-
-      const result = await rule.fix!(
-        { ...ctx, files: fixFiles },
-        {
-          caller: {
-            source: 'gate',
-            sessionId,
-            event: event as 'Stop' | 'SubagentStop',
-            ledgerDir: opts?.testOnly_tmpDir
-              ? path.join(opts.testOnly_tmpDir, 'autofix-ledger')
-              : undefined,
-            shadowDir: opts?.testOnly_tmpDir ?? os.tmpdir(),
-          },
-          testOnly: testOnlyArg,
-        },
-      );
-
-      for (const r of result.files) {
-        const abs = path.join(repoRoot, r.path);
-        const finding = fixableFindingMap.get(`${rule.id}::${r.path}`);
-        if (r.status === 'fixed') {
-          fixedFiles.push({
-            path: abs,
-            removed: r.removed ?? 0,
-            kept: r.kept ?? 0,
-            total: r.total ?? 0,
-            addedCount: r.addedLines ?? 0,
-          });
-        } else {
-          unfixable.push({
-            path: abs,
-            ruleId: rule.id,
-            message: finding?.message ?? '',
-            reason: r.reason,
-            notice: r.notice,
-          });
-        }
-      }
-    }
 
     if (unfixable.length === 0 && strayErrors.length === 0) {
       if (fixedFiles.length === 0) {

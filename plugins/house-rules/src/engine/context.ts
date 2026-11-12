@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { readTranscript } from '../hooks/lib/transcript.js';
+import { fileDirRoot } from '../hooks/lib/repo-root.js';
 import { addedHunks, allLinesHunk, diffTextToHunks, gateBase, workScope } from '../hooks/lib/work-scope.js';
 import { languageForPath } from '../hooks/languages/registry.js';
 import type { ParserFactory } from '../hooks/languages/parse.js';
@@ -141,6 +142,7 @@ function scopeWithBash(opts: BuildContextOpts): { files: string[]; bashCreated: 
       const realAbs = realpathOrSelf(absPath);
       if (realAbs !== realRoot && !realAbs.startsWith(realRoot + path.sep)) continue;
       if (!existsSync(absPath)) continue;
+      if (fileDirRoot(absPath, realRoot) !== realRoot) continue;
       const relPath = path.relative(repoRoot, absPath);
       const tracked = isTracked(repoRoot, relPath);
       if (!tracked) {

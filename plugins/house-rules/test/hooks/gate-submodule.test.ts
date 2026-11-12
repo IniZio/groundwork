@@ -11,6 +11,11 @@ const OVER_BUDGET = Array.from({ length: 20 }, (_, i) =>
   i % 5 === 0 ? `// reason ${i}` : `export const x${i} = ${i};`,
 ).join("\n") + "\n";
 
+type Block =
+  | { type: "tool_use"; id: string; name: string; input: object }
+  | { type: "tool_result"; tool_use_id: string; content: string };
+interface TranscriptEntry { type: "assistant" | "user"; cwd: string; timestamp: string; message: { content: Block[] } }
+
 const roots: string[] = [];
 afterEach(() => {
   for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true });
@@ -30,14 +35,14 @@ function setup(kind: "plain" | "submodule") {
   writeFileSync(path.join(upstream, "a.ts"), BASE);
   git(upstream, "add", "-A");
   git(upstream, "commit", "-qm", "init");
-  if (kind === "plain") return { root, project: upstream, fileDir: upstream, entries: [] as Record<string, unknown>[] };
+  if (kind === "plain") return { root, project: upstream, fileDir: upstream, entries: [] as TranscriptEntry[] };
   const project = path.join(root, "super");
   mkdirSync(project);
   git(project, "init", "-q", "-b", "main");
   writeFileSync(path.join(project, "README.md"), "x\n");
   git(project, "submodule", "add", "-q", upstream, "repo/sub");
   git(project, "commit", "-qm", "init");
-  return { root, project, fileDir: path.join(project, "repo/sub"), entries: [] as Record<string, unknown>[] };
+  return { root, project, fileDir: path.join(project, "repo/sub"), entries: [] as TranscriptEntry[] };
 }
 
 type Fixture = ReturnType<typeof setup>;
@@ -65,10 +70,10 @@ function bash(fx: Fixture, command: string): void {
 function stopGate(fx: Fixture) {
   const tp = path.join(fx.root, "s1.jsonl");
   writeFileSync(tp, fx.entries.map((e) => JSON.stringify(e)).join("\n") + "\n");
-  const env = { ...process.env, TMPDIR: path.join(fx.root, "tmp") } as Record<string, string>;
+  const env: NodeJS.ProcessEnv = { ...process.env, TMPDIR: path.join(fx.root, "tmp") };
   delete env.CLAUDE_PROJECT_DIR;
   delete env.CLAUDE_CODE_ENTRYPOINT;
-  mkdirSync(env.TMPDIR, { recursive: true });
+  mkdirSync(path.join(fx.root, "tmp"), { recursive: true });
   const payload = { hook_event_name: "Stop", session_id: "s1", transcript_path: tp, cwd: fx.project };
   const r = spawnSync("bun", [GATE], { cwd: fx.project, env, encoding: "utf8", input: JSON.stringify(payload) });
   const out: { hookSpecificOutput?: { additionalContext?: string } } = r.stdout.trim() ? JSON.parse(r.stdout) : {};

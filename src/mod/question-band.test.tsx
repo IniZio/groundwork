@@ -2,8 +2,6 @@ import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-const TOOL = 'mcp__groundwork__ask'
-const LEDGER = '/home/t/.claude/groundwork/questions/sess-1.json'
 const BAND = {
   plugin: 'groundwork',
   component: 'AbovePrompt',
@@ -11,20 +9,16 @@ const BAND = {
 } as const
 
 function engine(on: On) {
-  const registered: unknown[] = []
   const submitted: string[] = []
-  const files = new Map<string, unknown>()
+  const files = new Map<string, string>()
   mock.env(on, { HOME: '/home/t' })
   on('session.id', () => ({ value: 'sess-1' }))
   on('fs.write', (_, e) => {
-    files.set(e.path, JSON.parse(e.text))
+    files.set(e.path, e.text)
     return { value: undefined }
   })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('tool.register', (_, e) => {
-    registered.push(e)
-    return { value: { tool: `mcp__groundwork__${e.name}` } }
-  })
+  on('turn.complete', (_, e) => ({ text: e.answer }))
   on('ui.render', ($, e) => {
     const { Text } = $.ui.resolve(e)
     return <Text>engine</Text>
@@ -33,28 +27,48 @@ function engine(on: On) {
     submitted.push(e.text)
     return { text: e.text }
   })
-  return { registered, submitted, ledger: () => files.get(LEDGER) }
+  return { submitted, files }
 }
 
-const ask = ($: Engine, question: string, recommend: string) =>
-  $.tool.call({ tool: TOOL, question, recommend, source: 'lead' })
+let turns = 0
+const reply = ($: Engine, answer: string, end: { agentId?: string; isAborted?: boolean } = {}) => {
+  const isAborted = end.isAborted === true
+  return $.turn.complete({ answer, durationMs: 1, turnId: `t${++turns}`, reason: isAborted ? 'aborted' : 'answer', isAborted, agentId: end.agentId })
+}
 
 const typed = (text: string) => ({ text, wait: false, origin: { kind: 'composer' } }) as const
 
-test('the ask tool registers deferred and records a numbered question', async ($, on) => {
-  const { registered } = engine(on)
-  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  expect(registered).toEqual([expect.objectContaining({ name: 'ask', isDeferred: true })])
+async function shown($: Engine): Promise<string[]> {
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  const out: string[] = []
+  for (let id = 1; id <= 5; id++) {
+    const t = await ui.find({ type: 'Text', text: new RegExp(`#${id} `) })
+    if (t !== undefined) out.push(t.text)
+  }
+  await ui.unmount()
+  return out
+}
 
-  const first = await ask($, 'Ship it?', 'yes')
-  expect(first.result).toBe('Question #1 recorded. End your reply with: #1 Ship it? Recommend: yes')
-  const second = await ask($, 'Squash?', 'no')
-  expect(second.result).toBe('Question #2 recorded. End your reply with: #2 Squash? Recommend: no')
+test('a reply line `question? Recommend: answer` becomes a numbered band entry and the reply passes through', async ($, on) => {
+  engine(on)
+  const answer = 'Done with the fix.\n\nShip it? Recommend: yes\n- **Squash?** Recommend: no'
+  expect((await reply($, answer)).text).toBe(answer)
+  expect(await shown($)).toEqual(['❓ #1 Ship it?', '❓ #2 Squash?'])
+})
+
+test('a repeated question keeps its number, and fenced, aborted and subagent replies record nothing', async ($, on) => {
+  engine(on)
+  await reply($, 'Ship it? Recommend: yes')
+  await reply($, 'Still waiting. Ship it? Recommend: yes')
+  await reply($, '```\nExample? Recommend: x\n```')
+  await reply($, 'Half done? Recommend: y', { isAborted: true })
+  await reply($, 'Which one? Recommend: A', { agentId: 'a1' })
+  expect(await shown($)).toEqual(['❓ #1 Ship it?'])
 })
 
 test('the band shows an open question and its recommend button answers it', async ($, on) => {
   const { submitted } = engine(on)
-  await ask($, 'Ship it?', 'yes')
+  await reply($, 'Ship it? Recommend: yes')
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...BAND, surface })
@@ -76,44 +90,35 @@ test('the band shows an open question and its recommend button answers it', asyn
 
 test('a typed answer closes its question and leaves other #numbers alone', async ($, on) => {
   const { submitted } = engine(on)
-  await ask($, 'Ship it?', 'yes')
-  await ask($, 'Squash?', 'no')
+  await reply($, 'Ship it? Recommend: yes\nSquash? Recommend: no')
 
   await $.prompt.submit(typed('#920 merge first'))
   await $.prompt.submit(typed('#2 yes, squash #920 too'))
   expect(submitted).toEqual(['#920 merge first', '#2 yes, squash #920 too\n(#2 was: "Squash?")'])
+  expect(await shown($)).toEqual(['❓ #1 Ship it?'])
+})
 
-  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  expect((await ui.find({ type: 'Text', text: /#1/ }))?.text).toContain('#1 Ship it?')
-  expect(await ui.find({ type: 'Text', text: /#2/ })).toBeUndefined()
-  await ui.unmount()
+test('an answered question asked again gets a new number', async ($, on) => {
+  engine(on)
+  await reply($, 'Ship it? Recommend: yes')
+  await $.prompt.submit(typed('#1 no'))
+  await reply($, 'Ship it now? Recommend: yes')
+  expect(await shown($)).toEqual(['❓ #2 Ship it now?'])
 })
 
 test('dismiss removes a question without submitting anything', async ($, on) => {
   const { submitted } = engine(on)
-  await ask($, 'Ship it?', 'yes')
+  await reply($, 'Ship it? Recommend: yes')
 
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
   await ui.press({ key: 'dismiss-1' })
   await ui.unmount()
   expect(submitted).toEqual([])
-
-  const after = await $.ui.mount({ ...BAND, surface: 'desktop' })
-  expect(await after.find({ type: 'Text', text: /#1/ })).toBeUndefined()
-  await after.unmount()
+  expect(await shown($)).toEqual([])
 })
 
-test('session start writes an empty ledger file for the hook', async ($, on) => {
-  const { ledger } = engine(on)
+test('session start marks the session live for the Stop hook', async ($, on) => {
+  const { files } = engine(on)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  expect(ledger()).toEqual({ recorded: [], open: [] })
-})
-
-test('ask writes the ledger file before it returns, and an answer closes the id but keeps it recorded', async ($, on) => {
-  const { ledger } = engine(on)
-  await ask($, 'Ship it?', 'yes')
-  expect(ledger()).toEqual({ recorded: [1], open: [1] })
-
-  await $.prompt.submit(typed('#1 yes'))
-  expect(ledger()).toEqual({ recorded: [1], open: [] })
+  expect([...files.keys()]).toEqual(['/home/t/.claude/groundwork/questions/sess-1.json'])
 })

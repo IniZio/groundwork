@@ -97,6 +97,20 @@ describe("the PreToolUse Bash hook strips session attribution from gh pr bodies"
     expect(readFileSync(join(cwd, "body.md"), "utf8")).toBe("## Why\n\nBecause.\n");
   });
 
+  test("a heredoc written to the body file in the same command is stripped in the command", () => {
+    const cwd = tempDir("hr-pr-");
+    const command = `cat > body.md <<'EOF'\n## Why\n\nBecause.\n\n${LINK}\nEOF\ngh pr edit 1448 --body-file ${cwd}/body.md 2>&1 | tail -1`;
+    const out = updated(run(cwd, command).stdout);
+    expect(out.updatedInput.command).toBe(`cat > body.md <<'EOF'\n## Why\n\nBecause.\nEOF\ngh pr edit 1448 --body-file ${cwd}/body.md 2>&1 | tail -1`);
+  });
+
+  test("a heredoc written to another file is left alone", () => {
+    const cwd = tempDir("hr-pr-");
+    writeFileSync(join(cwd, "body.md"), "Body.\n");
+    const command = `cat > notes.md <<'EOF'\n${LINK}\nEOF\ngh pr edit 1 --body-file body.md`;
+    expect(run(cwd, command).stdout).toBe("");
+  });
+
   test("-F with a stdin heredoc rewrites the heredoc in the command", () => {
     const cwd = tempDir("hr-pr-");
     const out = updated(run(cwd, `gh pr create -F - <<'EOF'\nBody.\n\nClaude-Session: ${LINK}\nEOF`).stdout);

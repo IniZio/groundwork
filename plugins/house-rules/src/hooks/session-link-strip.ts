@@ -1,7 +1,8 @@
 /**
  * PreToolUse Bash hook: removes Claude Code session links and `Claude-Session:` trailers from
  * `gh pr create`, `gh pr edit` and `gh api` PR write bodies. An inline body is rewritten through
- * updatedInput; a body file is rewritten on disk before the command runs. A body inside a re-parsed
+ * updatedInput; a body file is rewritten on disk before the command runs, and a heredoc the same
+ * command writes into that file is rewritten in the command. A body inside a re-parsed
  * string such as `bash -c` and an `--input` payload are left alone.
  */
 
@@ -11,8 +12,9 @@ import { getParser } from "./lib/tree-sitter-loader.js";
 import { readHookInput, type HookInput } from "./lib/hook-input.js";
 import { stripSessionAttribution } from "../cli/lint-commit-msg.mjs";
 import type { HookResult } from "./commit-guard.js";
+import path from "node:path";
 import { findPrBodies } from "./lib/gh-pr-body.js";
-import type { Parse } from "./lib/shell-calls.js";
+import { expandHome, literal, type Parse } from "./lib/shell-calls.js";
 
 interface Splice { start: number; end: number; text: string }
 
@@ -46,10 +48,28 @@ function stripFile(file: string): void {
   } catch { /* gh reports a missing body file itself */ }
 }
 
+/** `cat > body.md <<EOF` before `gh pr create --body-file body.md` writes the file after this hook reads it. */
+function writerHeredocs(root: Node, cwd: string, file: string): Node[] {
+  return root.descendantsOfType("redirected_statement").filter((s: Node | null): s is Node => s !== null).flatMap((s: Node) => {
+    const redirects = s.childrenForFieldName("redirect").filter((r: Node | null): r is Node => r !== null);
+    const writes = redirects.some((r: Node) => {
+      const dest = r.type === "file_redirect" ? r.childForFieldName("destination") : null;
+      const word = dest ? literal(dest) : undefined;
+      return !!word && path.resolve(cwd, expandHome(word)) === file;
+    });
+    if (!writes) return [];
+    return redirects.filter((r: Node) => r.type === "heredoc_redirect")
+      .flatMap((r: Node) => r.namedChildren.filter((c: Node | null): c is Node => c?.type === "heredoc_body"));
+  });
+}
+
 function findSplices(root: Node, source: string, cwd: string, parse: Parse): Splice[] {
   const splices: Array<Splice | null> = [];
   for (const ref of findPrBodies(root, source, cwd, parse)) {
-    if (ref.kind === "file") stripFile(ref.path);
+    if (ref.kind === "file") {
+      stripFile(ref.path);
+      for (const b of writerHeredocs(root, ref.cwd, ref.path)) splices.push(splice(b.startIndex, b.text, stripSessionAttribution));
+    }
     else if (ref.kind === "json-file" || ref.kind === "json-stdin" || ref.nested) continue;
     else if (ref.kind === "inline") splices.push(...valueSplices(ref.value, ref.start, ref.text));
     else splices.push(splice(ref.heredoc.startIndex, ref.heredoc.text, stripSessionAttribution));

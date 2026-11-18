@@ -21,7 +21,7 @@ async function answer($: Dollar, prompt: string): Promise<string> {
   await change($, l => {
     closed = l.open.filter(q => ids.has(q.id))
     open = l.open.filter(q => !ids.has(q.id))
-    return closed.length === 0 ? l : { ...l, open }
+    return closed.length === 0 ? l : close(l, closed)
   })
   return [
     prompt,
@@ -30,16 +30,24 @@ async function answer($: Dollar, prompt: string): Promise<string> {
   ].join('\n')
 }
 
+function close(l: QuestionLedger, closed: Question[]): QuestionLedger {
+  const ids = new Set(closed.map(q => q.id))
+  const closedMidTurn = l.working === true ? [...(l.closedMidTurn ?? []), ...closed] : l.closedMidTurn
+  return { ...l, open: l.open.filter(q => !ids.has(q.id)), closedMidTurn }
+}
+
 // Questions come from the reply, not a tool: a tool.call hook turns Code Mode off for the session.
 function record(l: QuestionLedger, reply: string): QuestionLedger {
   const open = [...l.open]
+  const stale = l.closedMidTurn ?? []
   let next = l.next
   for (const { id, question, recommend } of askedQuestions(reply)) {
+    if (stale.some(q => q.id === id || q.question === question)) continue
     const i = open.findIndex(q => q.id === id || q.question === question)
     if (i === -1) open.push({ id: next++, question, recommend })
     else open[i] = { id: open[i]!.id, question, recommend }
   }
-  return { next, open }
+  return { ...l, next, open }
 }
 
 export const register: Register = on => {
@@ -49,8 +57,15 @@ export const register: Register = on => {
     return next(e)
   })
 
+  on('turn.start', async ($, e, next) => {
+    if (e.agentId === undefined) await change($, l => ({ ...l, working: true, closedMidTurn: [] }))
+    return next(e)
+  })
+
   on('turn.complete', async ($, e, next) => {
-    if (e.agentId === undefined && !e.isAborted) await change($, l => record(l, e.answer))
+    if (e.agentId === undefined) {
+      await change($, l => ({ ...(e.isAborted ? l : record(l, e.answer)), working: false, closedMidTurn: [] }))
+    }
     return next(e)
   })
 
@@ -63,7 +78,7 @@ export const register: Register = on => {
     if (e.props.hasSurvey || open.length === 0) return next(e)
 
     const { Box, Button, Text } = $.ui.resolve(e)
-    const dismiss = (id: number) => change($, l => ({ ...l, open: l.open.filter(q => q.id !== id) }))
+    const dismiss = (id: number) => change($, l => close(l, l.open.filter(q => q.id === id)))
 
     return (
       <Box flexDirection="column">

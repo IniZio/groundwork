@@ -18,6 +18,7 @@ function engine(on: On) {
     return { value: undefined }
   })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
   on('turn.complete', (_, e) => ({ text: e.answer }))
   on('ui.render', ($, e) => {
     const { Text } = $.ui.resolve(e)
@@ -41,7 +42,7 @@ const typed = (text: string) => ({ text, wait: false, origin: { kind: 'composer'
 async function shown($: Engine): Promise<string[]> {
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   const out: string[] = []
-  for (let id = 1; id <= 5; id++) {
+  for (let id = 1; id <= 9; id++) {
     const t = await ui.find({ type: 'Text', text: new RegExp(`#${id} `) })
     if (t !== undefined) out.push(t.text)
   }
@@ -134,4 +135,26 @@ test('session start marks the session live for the Stop hook', async ($, on) => 
   const { files } = engine(on)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   expect([...files.keys()]).toEqual(['/home/t/.claude/groundwork/questions/sess-1.json'])
+})
+
+test('an answer queued while a turn runs keeps that turn\'s verbatim re-ask from opening a new number', async ($, on) => {
+  engine(on)
+  await reply($, 'Ship it? Recommend: yes\nSquash? Recommend: no\nTag it? Recommend: yes')
+  await $.turn.start({ text: 'go on', turnId: 'live' })
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await ui.press({ key: 'rec-1' })
+  await ui.press({ key: 'dismiss-3' })
+  await ui.unmount()
+  await $.prompt.submit(typed('#2 no'))
+  await reply($, 'Ship it? Recommend: yes\n#2 Squash? Recommend: no\nTag it? Recommend: yes')
+  expect(await shown($)).toEqual([])
+})
+
+test('an answered question re-asked verbatim in a later turn gets a new number', async ($, on) => {
+  engine(on)
+  await reply($, 'Ship it? Recommend: yes')
+  await $.prompt.submit(typed('#1 not yet'))
+  await $.turn.start({ text: '#1 not yet', turnId: 'next' })
+  await reply($, 'Ship it? Recommend: yes')
+  expect(await shown($)).toEqual(['❓ #2 Ship it?'])
 })

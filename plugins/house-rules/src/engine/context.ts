@@ -3,7 +3,7 @@ import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { readTranscript } from '../hooks/lib/transcript.js';
 import { fileDirRoot } from '../hooks/lib/repo-root.js';
-import { addedHunks, allLinesHunk, diffTextToHunks, gateBase, workScope } from '../hooks/lib/work-scope.js';
+import { addedHunks, allLinesHunk, diffTextToHunks, gateBase, workScope, type WorkScope } from '../hooks/lib/work-scope.js';
 import { languageForPath } from '../hooks/languages/registry.js';
 import type { ParserFactory } from '../hooks/languages/parse.js';
 import { forbiddenRedirect, inTypedArea, matchPath } from '../config/manifest.mjs';
@@ -27,6 +27,8 @@ export interface BuildContextOpts {
   event?: 'Stop' | 'SubagentStop';
   /** gate: agent ids still running; their touched files are excluded from scope */
   runningAgentIds?: string[];
+  /** gate: the work scope when the caller already computed it (it does not depend on repoRoot); computed here if omitted */
+  scope?: WorkScope;
   /** Injected once; defaults to the tree-sitter loader's getParser. */
   parserFactory?: ParserFactory;
   /** gate: test seam for Bash-created doc detection */
@@ -128,7 +130,7 @@ function scopeWithBash(opts: BuildContextOpts): { files: string[]; bashCreated: 
   }
 
   if (mode === 'gate') {
-    const scope = workScope({
+    const scope = opts.scope ?? workScope({
       event: opts.event ?? 'Stop',
       transcriptPath: opts.transcriptPath ?? '',
       sessionId: opts.sessionId ?? '',

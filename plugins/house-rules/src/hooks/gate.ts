@@ -13,7 +13,7 @@ import { runRules, coverageReport, formatCoverage, grammarWarnings, type Coverag
 import type { ParserFactory } from '../hooks/languages/parse.js';
 import { readBaseline, subtractBaseline } from '../engine/baseline.js';
 import { policyForRoot, DEFAULT_IGNORE, type PolicyEntry } from '../engine/policy.js';
-import { touchedFiles, runningAgentIds } from './lib/work-scope.js';
+import { workScope, runningAgentIds, type WorkScope } from './lib/work-scope.js';
 import { readHookInput, type HookInput } from './lib/hook-input.js';
 import { fileDirRoot, policyDir } from './lib/repo-root.js';
 import { formatBlock, buildFull, formatShortReason, type RuleSummary } from './lib/block-format.js';
@@ -90,15 +90,17 @@ export async function run(
       (cwdRaw ? gitTopLevel(cwdRaw) : null) ??
       gitTopLevel(tpDir);
 
+    let scope: WorkScope | null = null;
+    const scopeOnce = (): WorkScope => scope ??= workScope({
+      event: event as 'Stop' | 'SubagentStop',
+      transcriptPath: relevantTranscriptPath,
+      sessionId,
+      agentTranscriptPath,
+      runningAgentIds: running,
+    });
+
     if (!repoRoot) {
-      const tf = touchedFiles({
-        event: event as 'Stop' | 'SubagentStop',
-        transcriptPath: relevantTranscriptPath,
-        sessionId,
-        agentTranscriptPath,
-        runningAgentIds: running,
-      });
-      for (const f of tf) {
+      for (const f of scopeOnce().files) {
         const r = gitTopLevel(f);
         if (r) { repoRoot = r; break; }
       }
@@ -109,13 +111,7 @@ export async function run(
     const rulesDir = path.resolve(import.meta.dir, '../../rules');
     const rules = opts?.testOnly_rules ?? await loadRules(rulesDir);
     const nestedRoots = new Set<string>();
-    for (const f of touchedFiles({
-      event: event as 'Stop' | 'SubagentStop',
-      transcriptPath: relevantTranscriptPath,
-      sessionId,
-      agentTranscriptPath,
-      runningAgentIds: running,
-    })) {
+    for (const f of scopeOnce().files) {
       if (!f.startsWith(outerRoot + path.sep)) continue;
       const r = fileDirRoot(f, outerRoot);
       if (r !== null && r !== outerRoot) nestedRoots.add(r);
@@ -142,6 +138,7 @@ export async function run(
         sessionId,
         event: event as 'Stop' | 'SubagentStop',
         runningAgentIds: running,
+        scope: scopeOnce(),
         parserFactory: opts?.testOnly_parserFactory,
       });
 

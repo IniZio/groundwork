@@ -67,7 +67,7 @@ class Session {
   }
 
   /** Runs the Stop gate with every git call logged; returns the autofix context and the logged git argument lines. */
-  stop(): { context: string; gitCalls: string[] } {
+  stop() {
     const tp = path.join(this.root, "s1.jsonl");
     writeFileSync(tp, this.entries.map((e) => JSON.stringify(e)).join("\n") + "\n");
     const shimDir = path.join(this.root, "shim");
@@ -109,5 +109,62 @@ describe("gate: a Stop with nested roots scans the work scope once", () => {
     for (const t of targets) expect(context).toContain(`${t}: removed`);
     const outerScans = gitCalls.filter((l) => l.startsWith(`-C ${s.repo} ls-files --others`));
     expect(outerScans.length).toBe(1);
+  });
+});
+
+const WORKTREES = 30;
+
+/** Untracked nested repos under .claude/worktrees, as agent worktrees sit in a parent checkout. */
+function addWorktrees(s: Session): string[] {
+  return Array.from({ length: WORKTREES }, (_, i) => {
+    const dir = path.join(s.repo, ".claude", "worktrees", `wt-${String(i).padStart(2, "0")}`);
+    initRepo(dir);
+    return dir;
+  });
+}
+
+/** Worktrees that some git call ran in, from the `-C <dir>` the gate passes. */
+function visited(gitCalls: string[], worktrees: string[]): string[] {
+  return worktrees.filter((w) => gitCalls.some((l) => l.startsWith(`-C ${w} `) || l.startsWith(`-C ${w}/ `)));
+}
+
+const APPEND_OVER_BUDGET = (rel: string) =>
+  `python3 -c 'import sys; open("${rel}", "a").write(sys.stdin.read())' <<'E'\n${OVER_BUDGET}E`;
+
+describe("gate: nested worktrees the session never touched are not scanned", () => {
+  it("gates an Edit inside one of many worktrees and visits only that one", () => {
+    const s = new Session();
+    const worktrees = addWorktrees(s);
+    s.bash("ls");
+    const target = path.join(worktrees[7], "src/a.ts");
+    s.edit(target);
+
+    const { context, gitCalls } = s.stop();
+
+    expect(context).toContain(`${target}: removed`);
+    expect(visited(gitCalls, worktrees)).toEqual([worktrees[7]]);
+  });
+
+  it("gates a Bash write made from inside a worktree and visits only that one", () => {
+    const s = new Session();
+    const worktrees = addWorktrees(s);
+    s.bash("ls");
+    s.bash(APPEND_OVER_BUDGET("src/a.ts"), worktrees[3]);
+
+    const { context, gitCalls } = s.stop();
+
+    expect(context).toContain(`${path.join(worktrees[3], "src/a.ts")}: removed`);
+    expect(visited(gitCalls, worktrees)).toEqual([worktrees[3]]);
+  });
+
+  it("gates a Bash write into a worktree named by a relative path from the parent checkout", () => {
+    const s = new Session();
+    const worktrees = addWorktrees(s);
+    s.bash(APPEND_OVER_BUDGET(".claude/worktrees/wt-12/src/a.ts"));
+
+    const { context, gitCalls } = s.stop();
+
+    expect(context).toContain(`${path.join(worktrees[12], "src/a.ts")}: removed`);
+    expect(visited(gitCalls, worktrees)).toEqual([worktrees[12]]);
   });
 });

@@ -266,15 +266,12 @@ export function buildContext(opts: BuildContextOpts): RuleContext {
   const { files: relPaths, bashCreated, interpreterCreated } = scopeWithBash(withTouches);
   const sources = createSourceFiles(opts.parserFactory);
 
-  // Compute base once
-  let base: string;
-  if (mode === 'guard') {
-    base = opts.base ?? 'HEAD';
-  } else if (mode === 'gate') {
-    base = opts.base ?? gateBase(repoRoot);
-  } else {
-    base = opts.base ?? '';
-  }
+  let resolvedBase: string | undefined;
+  const baseRef = (): string => {
+    if (resolvedBase !== undefined) return resolvedBase;
+    if (opts.base !== undefined) return resolvedBase = opts.base;
+    return resolvedBase = mode === 'guard' ? 'HEAD' : mode === 'gate' ? gateBase(repoRoot) : '';
+  };
 
   const files: ScopedFile[] = [];
 
@@ -295,6 +292,7 @@ export function buildContext(opts: BuildContextOpts): RuleContext {
     const lang = languageForPath(relPath, text?.split('\n')[0]) ?? undefined;
 
     let baseText: string;
+    const base = baseRef();
     const showResult = spawnSync('git', ['-C', repoRoot, 'show', `${base}:${relPath}`], {
       encoding: 'utf8',
     });

@@ -96,6 +96,10 @@ interface AgentTouches {
   /** paths parsed out of Bash command text */
   parsed: Set<string>;
   windows: BashWindow[];
+  /** every directory a Bash call ran in or cd'd to */
+  dirs: Set<string>;
+  /** the text of every Bash command */
+  commands: string[];
 }
 
 const WINDOW_SLACK_MS = 1000;
@@ -114,7 +118,7 @@ function cdTargets(cmd: string, cwd: string): string[] {
 }
 
 function scanTranscript(raw: string): AgentTouches {
-  const touches: AgentTouches = { edited: new Set(), parsed: new Set(), windows: [] };
+  const touches: AgentTouches = { edited: new Set(), parsed: new Set(), windows: [], dirs: new Set(), commands: [] };
   const pending = new Map<string, { dirs: string[]; start: number }>();
   for (const entry of parseTranscript(raw)) {
     for (const blk of entry.blocks) {
@@ -129,6 +133,8 @@ function scanTranscript(raw: string): AgentTouches {
       } else if (blk.name === "Bash") {
         const cmd = blk.command ?? "";
         extractBashTargets(cmd, entry.cwd, touches.parsed);
+        touches.commands.push(cmd);
+        if (entry.cwd) for (const d of cdTargets(cmd, entry.cwd)) touches.dirs.add(d);
         if (blk.id && entry.cwd && !isNaN(entry.timeMs)) {
           pending.set(blk.id, { dirs: cdTargets(cmd, entry.cwd), start: entry.timeMs });
         }
@@ -140,30 +146,57 @@ function scanTranscript(raw: string): AgentTouches {
 
 interface Candidate { abs: string; untracked: boolean; changedMs: number; bornMs: number }
 
-/** Files differing from the gate base, or untracked and not ignored, in one repo. */
-function repoCandidates(repoRoot: string): Candidate[] {
-  const list = (args: string[]): string[] => {
-    const r = spawnSync("git", ["-C", repoRoot, ...args, "-z"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-    return r.status === 0 ? r.stdout.split("\0").filter(Boolean) : [];
-  };
-  const untracked = new Set(list(["ls-files", "--others", "--exclude-standard"]));
-  const changed = list(["diff", "--name-only", "--no-renames", gateBase(repoRoot)]);
-  const out: Candidate[] = [];
-  for (const rel of new Set([...changed, ...untracked])) {
-    const abs = path.join(repoRoot, rel);
-    try {
-      const st = statSync(abs);
-      if (st.isDirectory() && existsSync(path.join(abs, ".git"))) out.push(...repoCandidates(abs));
-      if (!st.isFile()) continue;
-      out.push({ abs, untracked: untracked.has(rel), changedMs: Math.max(st.mtimeMs, st.ctimeMs), bornMs: st.birthtimeMs });
-    } catch { continue; }
-  }
-  return out;
-}
-
 class GitScope {
   private roots = new Map<string, string | null>();
   private candidates = new Map<string, Candidate[]>();
+  private touchedDirs = new Set<string>();
+  private commandText = "";
+
+  /** Registers what an agent touched. Call it for every agent before `attribute`, because candidates are cached across windows and agents. */
+  note(t: AgentTouches): void {
+    for (const p of [...t.edited, ...t.parsed, ...t.dirs]) {
+      for (let d = p; !this.touchedDirs.has(d); d = path.dirname(d)) {
+        this.touchedDirs.add(d);
+        if (path.dirname(d) === d) break;
+      }
+    }
+    this.commandText += t.commands.join("\n") + "\n";
+  }
+
+  /** An edit or a Bash directory lies in the repo, or a Bash command names its directory. */
+  private touched(dir: string): boolean {
+    return this.touchedDirs.has(dir) || this.commandText.includes(path.basename(dir));
+  }
+
+  /**
+   * Files differing from the gate base, or untracked and not ignored, in one repo. A nested repo
+   * that git lists as untracked is scanned only when touched; a changed one (a submodule) always is.
+   */
+  private scan(repoRoot: string): Candidate[] {
+    const cached = this.candidates.get(repoRoot);
+    if (cached) return cached;
+    const list = (args: string[]): string[] => {
+      const r = spawnSync("git", ["-C", repoRoot, ...args, "-z"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+      return r.status === 0 ? r.stdout.split("\0").filter(Boolean) : [];
+    };
+    const untracked = new Set(list(["ls-files", "--others", "--exclude-standard"]));
+    const changed = list(["diff", "--name-only", "--no-renames", gateBase(repoRoot)]);
+    const out: Candidate[] = [];
+    for (const rel of new Set([...changed, ...untracked])) {
+      const abs = path.join(repoRoot, rel);
+      try {
+        const st = statSync(abs);
+        if (st.isDirectory() && existsSync(path.join(abs, ".git"))) {
+          const dir = abs.replace(/\/$/, "");
+          if (!untracked.has(rel) || this.touched(dir)) out.push(...this.scan(dir));
+        }
+        if (!st.isFile()) continue;
+        out.push({ abs, untracked: untracked.has(rel), changedMs: Math.max(st.mtimeMs, st.ctimeMs), bornMs: st.birthtimeMs });
+      } catch { continue; }
+    }
+    this.candidates.set(repoRoot, out);
+    return out;
+  }
 
   private root(dir: string): string | null {
     if (!this.roots.has(dir)) this.roots.set(dir, git(dir, ["rev-parse", "--show-toplevel"]));
@@ -177,8 +210,7 @@ class GitScope {
       const hi = w.end + WINDOW_SLACK_MS;
       const repos = new Set(w.dirs.map((d) => this.root(d)).filter((r): r is string => r !== null));
       for (const repo of repos) {
-        if (!this.candidates.has(repo)) this.candidates.set(repo, repoCandidates(repo));
-        for (const c of this.candidates.get(repo)!) {
+        for (const c of this.scan(repo)) {
           if (c.changedMs < lo || c.changedMs > hi) continue;
           files.add(c.abs);
           if (c.untracked && (c.bornMs <= 0 || c.bornMs >= lo)) created.add(c.abs);
@@ -291,6 +323,7 @@ export function workScope(opts: TouchedFilesOpts): WorkScope {
     const tp = agentTranscriptPath ?? transcriptPath;
     const own = readTouches(tp);
     if (!own) return { files, created };
+    scope.note(own);
     const fromWindows = new Set<string>();
     scope.attribute(own.windows, fromWindows, created);
     const siblingEdits = new Set<string>();
@@ -308,14 +341,17 @@ export function workScope(opts: TouchedFilesOpts): WorkScope {
   }
 
   const main = readTouches(transcriptPath);
+  const subs = subagentTranscripts(path.join(path.dirname(transcriptPath), sessionId, "subagents")).flatMap((sub) => {
+    const t = readTouches(sub);
+    return t ? [{ agentId: path.basename(sub).replace(/^agent-|\.jsonl$/g, ""), t }] : [];
+  });
+  for (const t of [main, ...subs.map((s) => s.t)]) if (t) scope.note(t);
+
   if (main) collect(main, files, created);
 
   const runningSet = new Set(runningIds ?? []);
   const runningFiles = new Set<string>();
-  for (const sub of subagentTranscripts(path.join(path.dirname(transcriptPath), sessionId, "subagents"))) {
-    const t = readTouches(sub);
-    if (!t) continue;
-    const agentId = path.basename(sub).replace(/^agent-|\.jsonl$/g, "");
+  for (const { agentId, t } of subs) {
     if (runningSet.has(agentId)) collect(t, runningFiles, new Set());
     else collect(t, files, created);
   }

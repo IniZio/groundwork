@@ -52,25 +52,4 @@ v3 numbers and the targets for the next change.
 
 ## slow_commands.py
 
-`slow_commands.py` ranks a project's shell commands by the agent wall time they cost.
-Run it before you tune a build, test or wait loop, so you fix the slowest one first.
-
-```
-python3 -I evals/session-metrics/slow_commands.py [--days 3] [--top 25] [--json out.json] [<repo-or-transcript-dir>...]
-```
-
-With no directory it reads the transcripts of the current working directory. A repo
-path is mapped to its folder under `~/.claude/projects/`.
-
-The first table groups commands into families. The second table has one row per
-command. Its columns are total minutes, share of agent work time, runs, median and
-p90 seconds, red share, agents that ran it, and runs per agent.
-
-- Work time is the sum of gaps of 5 minutes or less between a thread's records, plus
-  time inside a command.
-- A compound command is one row, named by its build, test and script steps.
-- Red is a heuristic on the output text (`error:`, `FAILED`, a non-zero exit line),
-  because a command piped into `tail` hides its exit code.
-- A Code Mode inner command has no start time in the transcript. Its duration is the
-  time since the previous inner call or the script's dispatch, so commands a script
-  runs in parallel show near zero.
+The command-ranking script moved to the `reflect-project` skill, which runs it. See [its SKILL.md](../../skills/reflect-project/SKILL.md).

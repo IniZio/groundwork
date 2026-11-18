@@ -16,6 +16,7 @@ This file layers on pstack's poteto-mode, loaded in full under "Base: poteto-mod
 | Briefing, slicing or dispatching subagents | `references/briefs.md` |
 | Creating a Rust or Go project, or setting up its lint, format or CI | `playbooks/<lang>-project.md` |
 | A stack merged, disk above 80%, or asked to clean up worktrees | `playbooks/worktree-cleanup.md` |
+| A merge wave landed, or a hand-back shows a check or wait over 2 minutes | the `groundwork:reflect-project` skill |
 
 ## Questions and replies
 

@@ -29,6 +29,8 @@ export interface BuildContextOpts {
   runningAgentIds?: string[];
   /** gate: the work scope when the caller already computed it (it does not depend on repoRoot); computed here if omitted */
   scope?: WorkScope;
+  /** gate: the transcript's first touches when the caller already parsed them; parsed here, once per buildContext, if omitted */
+  firstTouches?: () => FirstTouches;
   /** Injected once; defaults to the tree-sitter loader's getParser. */
   parserFactory?: ParserFactory;
   /** gate: test seam for Bash-created doc detection */
@@ -99,28 +101,39 @@ function isTracked(repoRoot: string, relPath: string): boolean {
   return r.status === 0;
 }
 
-function isSessionCreated(transcriptPath: string, absPath: string): boolean {
-  for (const entry of readTranscript(transcriptPath) ?? []) {
+export type FirstTouches = ReadonlyMap<string, 'Write' | 'Edit'>;
+
+/** How the transcript first touched each file through Write, Edit or MultiEdit: a first Write means the session created it. */
+export function sessionFirstTouches(transcriptPath: string | undefined): FirstTouches {
+  const touches = new Map<string, 'Write' | 'Edit'>();
+  for (const entry of (transcriptPath ? readTranscript(transcriptPath) : null) ?? []) {
     if (entry.type !== 'assistant') continue;
     for (const blk of entry.blocks) {
-      if (blk.kind !== 'tool_use' || blk.filePath !== absPath) continue;
-      if (blk.name === 'Write') return true;
-      // If we see any other touch (Edit/MultiEdit) for this file first, it's not session-created
-      if (blk.name === 'Edit' || blk.name === 'MultiEdit') return false;
+      if (blk.kind !== 'tool_use' || !blk.filePath || touches.has(blk.filePath)) continue;
+      if (blk.name === 'Write') touches.set(blk.filePath, 'Write');
+      else if (blk.name === 'Edit' || blk.name === 'MultiEdit') touches.set(blk.filePath, 'Edit');
     }
   }
-  return false;
+  return touches;
+}
+
+type WithTouches = BuildContextOpts & { firstTouches: () => FirstTouches };
+
+function withFirstTouches(opts: BuildContextOpts): WithTouches {
+  if (opts.firstTouches) return { ...opts, firstTouches: opts.firstTouches };
+  let touches: FirstTouches | undefined;
+  return { ...opts, firstTouches: () => touches ??= sessionFirstTouches(opts.transcriptPath) };
 }
 
 export function scopeFiles(opts: BuildContextOpts): string[] {
-  return scopeWithBash(opts).files;
+  return scopeWithBash(withFirstTouches(opts)).files;
 }
 
 function realpathOrSelf(p: string): string {
   try { return realpathSync(p); } catch { return p; }
 }
 
-function scopeWithBash(opts: BuildContextOpts): { files: string[]; bashCreated: Set<string>; interpreterCreated: Set<string> } {
+function scopeWithBash(opts: WithTouches): { files: string[]; bashCreated: Set<string>; interpreterCreated: Set<string> } {
   const bashCreated = new Set<string>();
   const interpreterCreated = new Set<string>();
   const { repoRoot, mode } = opts;
@@ -148,7 +161,7 @@ function scopeWithBash(opts: BuildContextOpts): { files: string[]; bashCreated: 
       const relPath = path.relative(repoRoot, absPath);
       const tracked = isTracked(repoRoot, relPath);
       if (!tracked) {
-        const written = opts.transcriptPath ? isSessionCreated(opts.transcriptPath, absPath) : false;
+        const written = opts.firstTouches().get(absPath) === 'Write';
         if (!written && !scope.created.has(absPath)) continue;
         if (!written) interpreterCreated.add(relPath);
       }
@@ -248,7 +261,9 @@ function scopeWithBash(opts: BuildContextOpts): { files: string[]; bashCreated: 
 
 export function buildContext(opts: BuildContextOpts): RuleContext {
   const { repoRoot, mode } = opts;
-  const { files: relPaths, bashCreated, interpreterCreated } = scopeWithBash(opts);
+  const withTouches = withFirstTouches(opts);
+  const { firstTouches } = withTouches;
+  const { files: relPaths, bashCreated, interpreterCreated } = scopeWithBash(withTouches);
   const sources = createSourceFiles(opts.parserFactory);
 
   // Compute base once
@@ -301,9 +316,7 @@ export function buildContext(opts: BuildContextOpts): RuleContext {
 
     let sessionCreated = false;
     if (mode === 'gate') {
-      sessionCreated = opts.transcriptPath
-        ? isSessionCreated(opts.transcriptPath, absPath)
-        : false;
+      sessionCreated = firstTouches().get(absPath) === 'Write';
       if (bashCreated.has(relPath) || interpreterCreated.has(relPath)) sessionCreated = true;
     }
 

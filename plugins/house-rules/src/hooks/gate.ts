@@ -7,7 +7,7 @@ import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { buildContext } from '../engine/context.js';
+import { buildContext, sessionFirstTouches, type FirstTouches } from '../engine/context.js';
 import { loadRules } from '../engine/registry.js';
 import { runRules, coverageReport, formatCoverage, grammarWarnings, type Coverage, type FindingWithSeverity } from '../engine/run.js';
 import type { ParserFactory } from '../hooks/languages/parse.js';
@@ -99,6 +99,9 @@ export async function run(
       runningAgentIds: running,
     });
 
+    let touches: FirstTouches | null = null;
+    const touchesOnce = (): FirstTouches => touches ??= sessionFirstTouches(relevantTranscriptPath);
+
     if (!repoRoot) {
       for (const f of scopeOnce().files) {
         const r = gitTopLevel(f);
@@ -139,6 +142,7 @@ export async function run(
         event: event as 'Stop' | 'SubagentStop',
         runningAgentIds: running,
         scope: scopeOnce(),
+        firstTouches: touchesOnce,
         parserFactory: opts?.testOnly_parserFactory,
       });
 

@@ -95,7 +95,10 @@ test('a typed answer closes its question and leaves other #numbers alone', async
 
   await $.prompt.submit(typed('#920 merge first'))
   await $.prompt.submit(typed('#2 yes, squash #920 too'))
-  expect(submitted).toEqual(['#920 merge first', '#2 yes, squash #920 too\n(#2 was: "Squash?")'])
+  expect(submitted).toEqual([
+    '#920 merge first\n(#1 still open: "Ship it?")\n(#2 still open: "Squash?")',
+    '#2 yes, squash #920 too\n(#2 was: "Squash?")\n(#1 still open: "Ship it?")',
+  ])
   expect(await shown($)).toEqual(['❓ #1 Ship it?'])
 })
 
@@ -105,6 +108,15 @@ test('an answered question asked again gets a new number', async ($, on) => {
   await $.prompt.submit(typed('#1 no'))
   await reply($, 'Ship it now? Recommend: yes')
   expect(await shown($)).toEqual(['❓ #2 Ship it now?'])
+})
+
+test('a question written as #N rewords open #N in place, and an unknown #N is a new question', async ($, on) => {
+  const { submitted } = engine(on)
+  await reply($, 'Ship it? Recommend: yes\nSquash? Recommend: no')
+  await reply($, '#1 Ship it to staging first? Recommend: yes\n#7 Tag it? Recommend: yes')
+  expect(await shown($)).toEqual(['❓ #1 Ship it to staging first?', '❓ #2 Squash?', '❓ #3 Tag it?'])
+  await $.prompt.submit(typed('#1 ok'))
+  expect(submitted).toEqual(['#1 ok\n(#1 was: "Ship it to staging first?")\n(#2 still open: "Squash?")\n(#3 still open: "Tag it?")'])
 })
 
 test('dismiss removes a question without submitting anything', async ($, on) => {

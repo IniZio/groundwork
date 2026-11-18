@@ -16,24 +16,30 @@ function answeredIds(prompt: string): number[] {
 
 async function answer($: Dollar, prompt: string): Promise<string> {
   const ids = new Set(answeredIds(prompt))
-  if (ids.size === 0) return prompt
   let closed: Question[] = []
+  let open: Question[] = []
   await change($, l => {
     closed = l.open.filter(q => ids.has(q.id))
-    return closed.length === 0 ? l : { ...l, open: l.open.filter(q => !ids.has(q.id)) }
+    open = l.open.filter(q => !ids.has(q.id))
+    return closed.length === 0 ? l : { ...l, open }
   })
-  return [prompt, ...closed.map(q => `(#${q.id} was: "${q.question}")`)].join('\n')
+  return [
+    prompt,
+    ...closed.map(q => `(#${q.id} was: "${q.question}")`),
+    ...open.map(q => `(#${q.id} still open: "${q.question}")`),
+  ].join('\n')
 }
 
 // Questions come from the reply, not a tool: a tool.call hook turns Code Mode off for the session.
 function record(l: QuestionLedger, reply: string): QuestionLedger {
   const open = [...l.open]
   let next = l.next
-  for (const { question, recommend } of askedQuestions(reply)) {
-    if (open.some(q => q.question === question)) continue
-    open.push({ id: next++, question, recommend })
+  for (const { id, question, recommend } of askedQuestions(reply)) {
+    const i = open.findIndex(q => q.id === id || q.question === question)
+    if (i === -1) open.push({ id: next++, question, recommend })
+    else open[i] = { id: open[i]!.id, question, recommend }
   }
-  return next === l.next ? l : { next, open }
+  return { next, open }
 }
 
 export const register: Register = on => {

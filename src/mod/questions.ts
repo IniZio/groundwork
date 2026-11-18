@@ -4,8 +4,11 @@ const ASKED = /^(?:[-*]\s+|\d+[.)]\s+)?(?:#\d+\s+)?(.*\?)[*_]*\s+Recommend:\s*(.
 
 /** A reply line `<question>? Recommend: <answer>`, the shape both the band and the Stop hook read. */
 export function parseQuestion(line: string): AskedQuestion | null {
-  const m = ASKED.exec(line.trim().replace(/\*\*/g, ''))
+  const s = line.trim().replace(/\*\*/g, '')
+  const m = ASKED.exec(s)
   if (m === null) return null
+  const insideCode = (s.slice(0, s.length - m[2]!.length).match(/`/g)?.length ?? 0) % 2 === 1
+  if (insideCode) return null
   const question = m[1]!.split(/(?<=[.!])\s+/).at(-1)!.trim()
   const recommend = m[2]!.trim()
   return question === '?' || recommend === '' ? null : { question, recommend }

@@ -61,6 +61,7 @@ test('a repeated question keeps its number, and fenced, aborted and subagent rep
   await reply($, 'Ship it? Recommend: yes')
   await reply($, 'Still waiting. Ship it? Recommend: yes')
   await reply($, '```\nExample? Recommend: x\n```')
+  await reply($, 'Questions now come from `<question>? Recommend: <answer>` lines.')
   await reply($, 'Half done? Recommend: y', { isAborted: true })
   await reply($, 'Which one? Recommend: A', { agentId: 'a1' })
   expect(await shown($)).toEqual(['❓ #1 Ship it?'])

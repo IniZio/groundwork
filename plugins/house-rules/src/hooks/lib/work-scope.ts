@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
 import { parseTranscript, readTranscript } from "./transcript.js";
+import { dirRoot } from "./repo-root.js";
 
 const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
@@ -66,15 +67,33 @@ export interface ForkPoint { ref: string; mergeBase: string }
 /** The candidate whose merge-base is nearest HEAD, because a clone-time origin/HEAD and a reflog fork ref can each name a stale trunk. */
 export function forkPoint(repoRoot: string, branch: string): ForkPoint | null {
   const own = new Set([branch, `origin/${branch}`]);
-  const candidates = [createdFrom(repoRoot, branch), "origin/HEAD", ...TRUNKS.flatMap((t) => [`origin/${t}`, t])];
+  const trunks = trunkCommits(repoRoot);
+  const created = createdFrom(repoRoot, branch);
+  const candidates = [created, "origin/HEAD", ...TRUNKS.flatMap((t) => [`origin/${t}`, t])];
+  const measured = new Set<string>();
   let best: (ForkPoint & { ahead: number }) | null = null;
   for (const ref of new Set(candidates)) {
-    if (!ref || own.has(ref) || !git(repoRoot, ["rev-parse", "--verify", "-q", `${ref}^{commit}`])) continue;
+    if (!ref || own.has(ref)) continue;
+    const commit = trunks.get(ref) ?? (ref === created ? git(repoRoot, ["rev-parse", "--verify", "-q", `${ref}^{commit}`]) : null);
+    if (!commit || measured.has(commit)) continue;
+    measured.add(commit);
     const mergeBase = git(repoRoot, ["merge-base", "HEAD", ref]);
     const ahead = mergeBase ? Number(git(repoRoot, ["rev-list", "--count", `${mergeBase}..HEAD`])) : NaN;
     if (mergeBase && Number.isFinite(ahead) && (best === null || ahead < best.ahead)) best = { ref, mergeBase, ahead };
   }
   return best && { ref: best.ref, mergeBase: best.mergeBase };
+}
+
+/** The commit of each trunk branch that exists, local and on origin, and of origin/HEAD, keyed as forkPoint names them. */
+function trunkCommits(repoRoot: string): Map<string, string> {
+  const refs = ["refs/remotes/origin/HEAD", ...TRUNKS.flatMap((t) => [`refs/remotes/origin/${t}`, `refs/heads/${t}`])];
+  const out = git(repoRoot, ["for-each-ref", "--format=%(refname) %(objectname) %(objecttype)", ...refs]) ?? "";
+  const commits = new Map<string, string>();
+  for (const line of out.split("\n")) {
+    const [name, sha, type] = line.split(" ");
+    if (name && sha && type === "commit") commits.set(name.replace(/^refs\/(heads|remotes)\//, ""), sha);
+  }
+  return commits;
 }
 
 /** Gate base: HEAD on a trunk branch or detached; else the nearest fork point. */
@@ -199,7 +218,7 @@ class GitScope {
   }
 
   private root(dir: string): string | null {
-    if (!this.roots.has(dir)) this.roots.set(dir, git(dir, ["rev-parse", "--show-toplevel"]));
+    if (!this.roots.has(dir)) this.roots.set(dir, dirRoot(dir));
     return this.roots.get(dir) ?? null;
   }
 

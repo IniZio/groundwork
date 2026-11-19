@@ -120,6 +120,54 @@ describe("gate: running agent file exclusion", () => {
     expect(agentFileFixes).toHaveLength(0);
   });
 
+  /** A linked worktree of repoDir on its own branch, as a worker makes for its PR. */
+  function addWorktree(name: string): string {
+    const dir = path.join(repoDir, ".worktrees", name);
+    const r = spawnSync("git", ["worktree", "add", "-q", "-b", name, dir], { cwd: repoDir, encoding: "utf8" });
+    expect(r.status, r.stderr).toBe(0);
+    return dir;
+  }
+
+  function stopLead(): ReturnType<typeof run> {
+    return run(
+      { hook_event_name: "Stop", session_id: sessionId, transcript_path: transcriptPath, cwd: repoDir, background_tasks: [runningTask(AGENT_ID, "completed")] },
+      process.env as Record<string, string | undefined>,
+      { testOnly_tmpDir: tmpDir },
+    );
+  }
+
+  it("completed agent: a file in its own worktree is left alone by the lead's Stop", async () => {
+    const worktree = addWorktree("worker-pr");
+    const agentFile = makeViolatorTs(worktree, "agent-file.ts");
+    gitCommit(worktree, "worker change");
+    const originalContent = readFileSync(agentFile, "utf8");
+    const leadFile = makeViolatorTs(repoDir, "lead-file.ts");
+    makeMainTranscript(transcriptPath, [leadFile], ts, repoDir);
+    makeSubagentTranscript(subagentPath, [agentFile], ts, worktree);
+
+    const result = await stopLead();
+
+    expect(result.exit).toBe(0);
+    expect(readFileSync(agentFile, "utf8")).toBe(originalContent);
+    expect(result.stdout).not.toContain("agent-file.ts");
+    expect(readFileSync(leadFile, "utf8")).not.toBe(originalContent);
+  });
+
+  it("completed agent: a file in its worktree that the lead also edited is still gated", async () => {
+    const worktree = addWorktree("worker-pr");
+    const agentFile = makeViolatorTs(worktree, "agent-file.ts");
+    gitCommit(worktree, "worker change");
+    const originalContent = readFileSync(agentFile, "utf8");
+    makeMainTranscript(transcriptPath, [agentFile], ts, repoDir);
+    makeSubagentTranscript(subagentPath, [agentFile], ts, worktree);
+
+    const result = await stopLead();
+
+    expect(result.exit).toBe(0);
+    const trimmed = readFileSync(agentFile, "utf8") !== originalContent;
+    expect(trimmed || result.stdout.includes("agent-file.ts")).toBe(true);
+  });
+
   it("completed agent: its over-budget file is auto-trimmed (content changes or gate mentions it)", async () => {
     const agentFile = makeViolatorTs(repoDir, "agent-file.ts");
     const originalContent = readFileSync(agentFile, "utf8");

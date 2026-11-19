@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, unlinkSync } from "node:fs";
 import path from "node:path";
+import { fileDirRoot } from "./repo-root.js";
 import { spawnSync } from "node:child_process";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
@@ -268,6 +269,8 @@ export interface TouchedFilesOpts {
   sessionId: string;
   agentTranscriptPath?: string;
   runningAgentIds?: string[];
+  /** Stop only: the repo the lead works in. A finished agent's files under any other root are left to that agent's own SubagentStop gate. */
+  leadRoot?: string;
 }
 
 export function runningAgentIds(backgroundTasks: unknown): string[] {
@@ -351,9 +354,17 @@ export function workScope(opts: TouchedFilesOpts): WorkScope {
 
   const runningSet = new Set(runningIds ?? []);
   const runningFiles = new Set<string>();
+  const finishedFiles = new Set<string>();
+  const finishedCreated = new Set<string>();
   for (const { agentId, t } of subs) {
     if (runningSet.has(agentId)) collect(t, runningFiles, new Set());
-    else collect(t, files, created);
+    else collect(t, finishedFiles, finishedCreated);
+  }
+  const { leadRoot } = opts;
+  for (const f of finishedFiles) {
+    if (leadRoot !== undefined && !files.has(f) && fileDirRoot(f, leadRoot) !== leadRoot) continue;
+    files.add(f);
+    if (finishedCreated.has(f)) created.add(f);
   }
 
   for (const f of runningFiles) {

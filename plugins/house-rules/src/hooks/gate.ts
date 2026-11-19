@@ -97,6 +97,7 @@ export async function run(
       sessionId,
       agentTranscriptPath,
       runningAgentIds: running,
+      leadRoot: repoRoot ?? undefined,
     });
 
     let touches: FirstTouches | null = null;

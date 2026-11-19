@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { hasBlocks, isEntry } from "./generated/transcript-validators.mjs";
 import type { RawBlock } from "./transcript-schemas.js";
 
@@ -72,5 +72,14 @@ export function parseTranscript(raw: string): TranscriptEntry[] {
 
 /** Entries of a transcript file; null when the file cannot be read. */
 export function readTranscript(transcriptPath: string): TranscriptEntry[] | null {
-  try { return parseTranscript(readFileSync(transcriptPath, "utf8")); } catch { return null; }
+  try {
+    const { size, mtimeMs } = statSync(transcriptPath);
+    const hit = parsedByPath.get(transcriptPath);
+    if (hit && hit.size === size && hit.mtimeMs === mtimeMs) return hit.entries;
+    const entries = parseTranscript(readFileSync(transcriptPath, "utf8"));
+    parsedByPath.set(transcriptPath, { size, mtimeMs, entries });
+    return entries;
+  } catch { return null; }
 }
+
+const parsedByPath = new Map<string, { size: number; mtimeMs: number; entries: TranscriptEntry[] }>();

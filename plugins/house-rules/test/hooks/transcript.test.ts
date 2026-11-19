@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { parseTranscript, parseTranscriptLine } from "../../src/hooks/lib/transcript.js";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { parseTranscript, parseTranscriptLine, readTranscript } from "../../src/hooks/lib/transcript.js";
 
 const line = JSON.stringify;
 
@@ -84,5 +87,17 @@ describe("parseTranscript", () => {
   test("keeps valid lines in order and skips bad ones", () => {
     const raw = [line({ type: "user" }), "oops", "", line({ type: "assistant" })].join("\n");
     expect(parseTranscript(raw).map((e) => e.type)).toEqual(["user", "assistant"]);
+  });
+});
+
+describe("readTranscript across calls", () => {
+  test("returns the new entries after the file grows", () => {
+    const file = path.join(mkdtempSync(path.join(os.tmpdir(), "hr-transcript-")), "t.jsonl");
+    const row = (cwd: string) => JSON.stringify({ type: "user", timestamp: "2026-01-01T00:00:00.000Z", cwd, message: { content: [] } }) + "\n";
+    writeFileSync(file, row("/a"));
+    expect(readTranscript(file)?.map((e) => e.cwd)).toEqual(["/a"]);
+    expect(readTranscript(file)?.map((e) => e.cwd)).toEqual(["/a"]);
+    writeFileSync(file, row("/a") + row("/b"));
+    expect(readTranscript(file)?.map((e) => e.cwd)).toEqual(["/a", "/b"]);
   });
 });

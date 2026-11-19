@@ -1,6 +1,5 @@
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync, unlinkSync } from "node:fs";
 import path from "node:path";
-import { fileDirRoot } from "./repo-root.js";
 import { spawnSync } from "node:child_process";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
@@ -205,11 +204,11 @@ class GitScope {
   }
 
   /** Adds every candidate whose last change falls inside one of the windows; untracked ones born inside it go to `created`. */
-  attribute(windows: BashWindow[], files: Set<string>, created: Set<string>): void {
+  attribute(windows: BashWindow[], files: Set<string>, created: Set<string>, onlyRepo?: string): void {
     for (const w of windows) {
       const lo = w.start - WINDOW_SLACK_MS;
       const hi = w.end + WINDOW_SLACK_MS;
-      const repos = new Set(w.dirs.map((d) => this.root(d)).filter((r): r is string => r !== null));
+      const repos = new Set(w.dirs.map((d) => this.root(d)).filter((r): r is string => r !== null && (onlyRepo === undefined || r === onlyRepo)));
       for (const repo of repos) {
         for (const c of this.scan(repo)) {
           if (c.changedMs < lo || c.changedMs > hi) continue;
@@ -311,15 +310,31 @@ function subagentTranscripts(dir: string): string[] {
  * the transcript; any other Bash write is found in git: a file differing from the gate base,
  * or untracked, in a repo the call ran in, whose last change falls inside the call's window.
  */
+/** Whether the nearest directory holding a .git above a file is the given repo root, answered from the filesystem alone. */
+function nearestRepoIs(repoRoot: string): (file: string) => boolean {
+  const byDir = new Map<string, boolean>();
+  const check = (dir: string): boolean => {
+    const known = byDir.get(dir);
+    if (known !== undefined) return known;
+    const parent = path.dirname(dir);
+    const answer = existsSync(path.join(dir, ".git")) ? dir === repoRoot : parent === dir ? false : check(parent);
+    byDir.set(dir, answer);
+    return answer;
+  };
+  return (file) => {
+    try { return check(realpathSync(path.dirname(file))); } catch { return false; }
+  };
+}
+
 export function workScope(opts: TouchedFilesOpts): WorkScope {
   const { event, transcriptPath, sessionId, agentTranscriptPath, runningAgentIds: runningIds } = opts;
   const scope = new GitScope();
   const files = new Set<string>();
   const created = new Set<string>();
-  const collect = (t: AgentTouches, into: Set<string>, born: Set<string>) => {
+  const collect = (t: AgentTouches, into: Set<string>, born: Set<string>, onlyRepo?: string) => {
     for (const f of t.edited) into.add(f);
     for (const f of t.parsed) into.add(f);
-    scope.attribute(t.windows, into, born);
+    scope.attribute(t.windows, into, born, onlyRepo);
   };
 
   if (event === "SubagentStop") {
@@ -352,17 +367,18 @@ export function workScope(opts: TouchedFilesOpts): WorkScope {
 
   if (main) collect(main, files, created);
 
+  const { leadRoot } = opts;
   const runningSet = new Set(runningIds ?? []);
   const runningFiles = new Set<string>();
   const finishedFiles = new Set<string>();
   const finishedCreated = new Set<string>();
   for (const { agentId, t } of subs) {
     if (runningSet.has(agentId)) collect(t, runningFiles, new Set());
-    else collect(t, finishedFiles, finishedCreated);
+    else collect(t, finishedFiles, finishedCreated, leadRoot);
   }
-  const { leadRoot } = opts;
+  const inLeadRepo = leadRoot === undefined ? () => true : nearestRepoIs(leadRoot);
   for (const f of finishedFiles) {
-    if (leadRoot !== undefined && !files.has(f) && fileDirRoot(f, leadRoot) !== leadRoot) continue;
+    if (!files.has(f) && !inLeadRepo(f)) continue;
     files.add(f);
     if (finishedCreated.has(f)) created.add(f);
   }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rank a project's shell commands by the agent wall time they cost. Stdlib only. See README.md."""
+"""Rank a project's shell commands by the agent wall time they cost. Stdlib only. See ../SKILL.md."""
 import argparse
 import glob
 import json
@@ -12,11 +12,17 @@ from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
 
+SUB = os.sep + "subagents" + os.sep
 MAX_CMD_S = 2 * 3600
 IDLE_GAP_S = 300
 RED = re.compile(
     r"error(\[E\d+\])?:|\bFAILED\b|\bFAIL\b|panicked at|Traceback \(most recent|not ok \d"
     r"|Exit code [1-9]|\[exit [1-9]\d*\]|exit status [1-9]|npm ERR!")
+CUT = re.compile(r"(?:Exit code |\[exit |exit status )(124|137|143|144|147)\b")
+NEVER_RAN = re.compile(r"^\s*(PreToolUse:|<tool_use_error>|Blocked: |Permission to use Bash)")
+FAILED_TEST = re.compile(
+    r"^\s*(?:FAIL|SIGABRT|SIGSEGV|TIMEOUT)\s+\[[^\]]*\]\s+(?:\(\s*\d+/\d+\)\s+)?(\S+(?: \S+)?)\s*$"
+    r"|^test (\S+) \.\.\. FAILED|^--- FAIL: (\S+)|^\(fail\) (.+?)(?: \[[\d.]+ ?m?s\])?$|^FAILED (\S+)", re.M)
 WRAPPERS = {"timeout", "time", "nice", "sudo", "env", "stdbuf", "command", "exec", "nohup", "xargs"}
 KEYWORDS = {"until", "while", "do", "then", "if", "else", "elif", "!", "{", "(", "for", "done", "fi"}
 TRIVIAL = {"cd", "echo", "export", "mkdir", "cat", "tail", "head", "grep", "rg", "sed", "set", "true",
@@ -48,6 +54,12 @@ def text_of(content):
 
 def is_red(text):
     return bool(RED.search(text[:2000]) or RED.search(text[-6000:]))
+
+
+def failed_tests(text):
+    names = {(m.group(1).split()[-1] if m.group(1) else next(g for g in m.groups() if g))[:90]
+             for m in FAILED_TEST.finditer(text)}
+    return tuple(sorted(names)[:20])
 
 
 def short_path(p):
@@ -121,8 +133,11 @@ def family_of(key):
     return " ".join(words[:2]) if words[0] in ("cargo", "gh", "make") and len(words) > 1 else words[0]
 
 
-def scan(path):
-    """One transcript: [(start, seconds, key, red, virtual)], work seconds, first and last stamp."""
+def scan(path, seen=None):
+    """One transcript: [(start, seconds, key, red, timed, cut, failed tests)], work seconds, first and last stamp.
+
+    seen is a set of record uuids. A record already in it is skipped, which drops the history a resumed session copies.
+    """
     cmds, real_open, virt_cmd = [], {}, {}
     marker = prev = first = last = None
     work = 0.0
@@ -139,6 +154,10 @@ def scan(path):
             stamp = rec.get("timestamp")
             if not stamp:
                 continue
+            if seen is not None and rec.get("uuid"):
+                if rec["uuid"] in seen:
+                    continue
+                seen.add(rec["uuid"])
             t = epoch(stamp)
             first = t if first is None else first
             if prev is not None and (t - prev <= IDLE_GAP_S or real_open):
@@ -149,6 +168,8 @@ def scan(path):
             virtual = bool(rec.get("isVirtual")) or msg.get("model") == "<synthetic>"
             if not isinstance(content, list):
                 continue
+            res = rec.get("toolUseResult")
+            res = res if isinstance(res, dict) else {}
             for b in content:
                 if not isinstance(b, dict):
                     continue
@@ -157,24 +178,28 @@ def scan(path):
                     if virtual:
                         if b.get("name") == "Bash":
                             start = marker if marker is not None else t
-                            virt_cmd[b.get("id")] = (start, min(max(0.0, t - start), MAX_CMD_S), inp.get("command") or "")
+                            virt_cmd[b.get("id")] = (start, min(max(0.0, t - start), MAX_CMD_S), inp.get("command") or "", True)
                         marker = t
                     elif b.get("name") == "Bash":
-                        real_open[b.get("id")] = (t, inp.get("command") or "")
+                        real_open[b.get("id")] = (t, None, inp.get("command") or "", not inp.get("run_in_background"))
                     elif b.get("name") == "REPL":
                         marker = t if marker is None else max(marker, t)
                 elif b.get("type") == "tool_result":
                     tid = b.get("tool_use_id")
-                    if tid in real_open:
-                        start, cmd = real_open.pop(tid)
-                        red = bool(b.get("is_error")) or is_red(text_of(b.get("content")))
-                        cmds.append((start, min(t - start, MAX_CMD_S), command_key(cmd), red, False))
-                    elif tid in virt_cmd:
-                        start, secs, cmd = virt_cmd.pop(tid)
-                        res = rec.get("toolUseResult") or {}
-                        out = (res.get("stdout") or "") + "\n" + (res.get("stderr") or "") if isinstance(res, dict) else ""
-                        red = bool(b.get("is_error")) or is_red(out or text_of(b.get("content")))
-                        cmds.append((start, secs, command_key(cmd), red, True))
+                    opened = real_open.pop(tid, None) or virt_cmd.pop(tid, None)
+                    if not opened:
+                        continue
+                    start, secs, cmd, timed = opened
+                    secs = min(t - start, MAX_CMD_S) if secs is None else secs
+                    text = text_of(b.get("content"))
+                    if NEVER_RAN.match(text):
+                        continue
+                    out = (res.get("stdout") or "") + "\n" + (res.get("stderr") or "") if "stdout" in res else text
+                    moved = bool(res.get("backgroundTaskId"))
+                    cut = timed and (moved or bool(CUT.search(text[:300]) or CUT.search(text[-300:])))
+                    red = not cut and not moved and "returnCodeInterpretation" not in res and (
+                        bool(b.get("is_error")) or is_red(out))
+                    cmds.append((start, secs, command_key(cmd), red, timed, cut, failed_tests(out) if red else ()))
     return path, cmds, work, first, last
 
 
@@ -207,63 +232,90 @@ def main(argv=None):
                 paths.append(p)
     if not paths:
         sys.exit(f"no transcripts newer than {args.days:g} days under: " + ", ".join(map(transcript_dir, args.dirs)))
-    rows = defaultdict(lambda: {"secs": [], "red": 0, "threads": set(), "virtual": 0})
-    work = shell = sub_work = sub_shell = 0.0
-    threads = 0
+    rows = defaultdict(lambda: {"secs": [], "sub": 0.0, "lead": 0.0, "n": 0, "red": 0, "cut": 0, "threads": set()})
+    fail_agents, fail_runs = defaultdict(set), defaultdict(int)
+    work, shell, threads = [0.0, 0.0], [0.0, 0.0], [0, 0]
+    leads = sorted((p for p in paths if SUB not in p), key=os.path.getmtime)
+    subs = [p for p in paths if SUB in p]
+    seen = set()
     with ProcessPoolExecutor(args.workers) as pool:
-        for path, cmds, w, first, last in pool.map(scan, paths, chunksize=4):
-            if first is None or last < since:
+        scans = [scan(p, seen) for p in leads] + list(pool.map(scan, subs, chunksize=4))
+    for path, cmds, w, first, last in scans:
+        if first is None or last < since:
+            continue
+        who = 0 if SUB in path else 1
+        threads[who] += 1
+        work[who] += w
+        for start, secs, key, red, timed, cut, failed in cmds:
+            if start < since:
                 continue
-            threads += 1
-            work += w
-            is_sub = os.sep + "subagents" + os.sep in path
-            sub_work += w if is_sub else 0.0
-            for start, secs, key, red, virtual in cmds:
-                if start < since:
-                    continue
-                r = rows[key]
+            r = rows[key]
+            r["n"] += 1
+            r["red"] += red
+            r["cut"] += cut
+            r["threads"].add(path)
+            r["lead" if who else "sub"] += secs
+            shell[who] += secs
+            if timed:
                 r["secs"].append(secs)
-                r["red"] += red
-                r["threads"].add(path)
-                r["virtual"] += virtual
-                shell += secs
-                sub_shell += secs if is_sub else 0.0
-    ranked = sorted(rows.items(), key=lambda kv: -sum(kv[1]["secs"]))
-    n_cmds = sum(len(r["secs"]) for _, r in ranked)
-    print(f"window: last {args.days:g} days | threads: {threads} | agent work hours: {work / 3600:.1f} | "
-          f"shell commands: {n_cmds}, {shell / 3600:.1f} h ({100 * shell / work if work else 0:.0f}% of work time)")
-    print(f"subagents only: {sub_work / 3600:.1f} work hours, {sub_shell / 3600:.1f} h in shell commands "
-          f"({100 * sub_shell / sub_work if sub_work else 0:.0f}%)")
-    print("work time counts gaps of 5 minutes or less plus time inside a command. red is a heuristic on the output.")
-    print("a compound command is one row named by its build, test and script steps.")
-    fams = defaultdict(lambda: [0.0, 0, 0])
+            for name in failed:
+                fail_agents[name].add(path)
+                fail_runs[name] += 1
+    share = lambda part, whole: 100 * part / whole if whole else 0.0
+    ranked = sorted(rows.items(), key=lambda kv: -(kv[1]["sub"] + kv[1]["lead"]))
+    print(f"window: last {args.days:g} days | subagents: {threads[0]} | lead sessions: {threads[1]}")
+    print(f"subagents: {work[0] / 3600:.1f} work hours, {shell[0] / 3600:.1f} h in shell commands "
+          f"({share(shell[0], work[0]):.0f}%)")
+    print(f"leads: {work[1] / 3600:.1f} work hours, {shell[1] / 3600:.1f} h in shell commands "
+          f"({share(shell[1], work[1]):.0f}%)")
+    print("work time counts gaps of 5 minutes or less plus time inside a command.")
+    print("% sub is the share of subagent work time, % lead the share of lead work time.")
+    print("a compound command is one row named by its build, test and script steps. red is a heuristic on the")
+    print("output and marks the whole command. cut counts runs a timeout stopped or the harness moved to the")
+    print("background, so their time is a lower bound. median and p90 leave out runs started in the background.")
+    print("a command run from a script has no start time. its time is the gap since the script's previous call.")
+    fams = defaultdict(lambda: [0.0, 0.0, 0, 0])
     for key, r in ranked:
         f = fams[family_of(key)]
-        f[0] += sum(r["secs"])
-        f[1] += len(r["secs"])
-        f[2] += r["red"]
+        f[0] += r["sub"]
+        f[1] += r["lead"]
+        f[2] += r["n"]
+        f[3] += r["red"]
+    cols = f"{'sub min':>9}{'% sub':>7}{'lead min':>10}{'% lead':>8}{'runs':>7}"
     print()
-    print(f"{'family':46s}{'total min':>10}{'% work':>8}{'runs':>7}{'red %':>7}")
-    for fam, (secs, n, red) in sorted(fams.items(), key=lambda kv: -kv[1][0])[:12]:
-        print(f"{fam[:45]:46s}{secs / 60:10.0f}{100 * secs / work if work else 0:8.1f}{n:7d}{100 * red / n:7.0f}")
+    print(f"{'family (sum of the command rows below)':46s}{cols}{'red %':>7}")
+    for fam, (sub, lead, n, red) in sorted(fams.items(), key=lambda kv: -(kv[1][0] + kv[1][1]))[:12]:
+        print(f"{fam[:45]:46s}{sub / 60:9.0f}{share(sub, work[0]):7.1f}{lead / 60:10.0f}{share(lead, work[1]):8.1f}"
+              f"{n:7d}{100 * red / n:7.0f}")
     print()
-    print(f"{'command':46s}{'total min':>10}{'% work':>8}{'runs':>7}{'median s':>10}{'p90 s':>8}{'red %':>7}{'agents':>8}{'runs/agent':>12}")
+    print(f"{'command':46s}{cols}{'median s':>10}{'p90 s':>8}{'cut':>5}{'red %':>7}{'agents':>8}{'runs/agent':>12}")
     out = []
     for key, r in ranked[:args.top]:
-        total = sum(r["secs"])
-        n = len(r["secs"])
-        row = {"command": key, "total_min": total / 60, "work_pct": 100 * total / work if work else 0, "runs": n,
-               "median_s": st.median(r["secs"]), "p90_s": pct(r["secs"], 0.9), "red_pct": 100 * r["red"] / n,
-               "agents": len(r["threads"]), "runs_per_agent": n / len(r["threads"])}
+        n = r["n"]
+        row = {"command": key, "sub_min": r["sub"] / 60, "sub_pct": share(r["sub"], work[0]),
+               "lead_min": r["lead"] / 60, "lead_pct": share(r["lead"], work[1]), "runs": n,
+               "median_s": st.median(r["secs"]) if r["secs"] else 0.0, "p90_s": pct(r["secs"], 0.9), "cut": r["cut"],
+               "red_pct": 100 * r["red"] / n, "agents": len(r["threads"]), "runs_per_agent": n / len(r["threads"])}
         out.append(row)
-        print(f"{key[:45]:46s}{row['total_min']:10.0f}{row['work_pct']:8.1f}{n:7d}{row['median_s']:10.1f}"
-              f"{row['p90_s']:8.0f}{row['red_pct']:7.0f}{row['agents']:8d}{row['runs_per_agent']:12.1f}")
+        print(f"{key[:45]:46s}{row['sub_min']:9.0f}{row['sub_pct']:7.1f}{row['lead_min']:10.0f}{row['lead_pct']:8.1f}"
+              f"{n:7d}{row['median_s']:10.1f}{row['p90_s']:8.0f}{row['cut']:5d}{row['red_pct']:7.0f}"
+              f"{row['agents']:8d}{row['runs_per_agent']:12.1f}")
     rest = ranked[args.top:]
     if rest:
-        print(f"{'(' + str(len(rest)) + ' more commands)':46s}{sum(sum(r['secs']) for _, r in rest) / 60:10.0f}")
+        print(f"{'(' + str(len(rest)) + ' more commands)':46s}{sum(r['sub'] for _, r in rest) / 60:9.0f}{'':7s}"
+              f"{sum(r['lead'] for _, r in rest) / 60:10.0f}")
+    repeated = sorted(((len(v), fail_runs[name], name) for name, v in fail_agents.items() if len(v) >= 3), reverse=True)
+    if repeated:
+        print()
+        print(f"{'test that failed for 3 or more agents':92s}{'agents':>8}{'red runs':>10}")
+        for agents, runs, name in repeated[:10]:
+            print(f"{name[:91]:92s}{agents:8d}{runs:10d}")
     if args.json:
         with open(args.json, "w", encoding="utf-8") as fh:
-            json.dump({"days": args.days, "threads": threads, "work_h": work / 3600, "shell_h": shell / 3600, "rows": out}, fh)
+            json.dump({"days": args.days, "subagents": threads[0], "leads": threads[1], "sub_work_h": work[0] / 3600,
+                       "lead_work_h": work[1] / 3600, "sub_shell_h": shell[0] / 3600, "lead_shell_h": shell[1] / 3600,
+                       "rows": out, "repeated_failures": [{"test": n, "agents": a, "red_runs": r} for a, r, n in repeated]},
+                      fh)
 
 
 if __name__ == "__main__":

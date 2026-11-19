@@ -17,20 +17,26 @@ Run the script in this skill's folder against the main checkout, not a worktree:
 python3 -I <this skill's folder>/scripts/slow_commands.py --days 3 "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
 ```
 
-It reads the project's Claude Code transcripts and ranks shell commands by the agent wall time they cost. Read the header line first. When shell commands are under 20% of subagent work time, say so and stop: the time is going somewhere this skill cannot see.
+It reads the project's Claude Code transcripts and ranks shell commands by the agent wall time they cost. Read the `subagents:` line first. When it shows shell commands under 20% of subagent work time, say so and stop. The time is going somewhere this skill cannot see.
+
+The output has three tables. The family table sums the command rows that share a program, so a family and its commands are the same minutes. The command table has one row per command. The last table lists each test that failed for three or more agents.
 
 ## 2. Pick
 
-Take a row only when it passes one of these tests. Take the three largest by total minutes.
+Take a row only when it passes one of these tests. Each test names the table it reads. Take the three largest by `sub min` plus `lead min`, and never take a family together with one of its own commands.
 
-| Test | Kind |
-| --- | --- |
-| The `wait loops`, `gh pr` or `gh run` family above 2% in the `% work` column | Wait inside a worker |
-| 20 or more runs and a red share of 50% or more | Check that fails late |
-| A median of 30 seconds or more, run by 10 or more agents | Fixed cost per agent |
-| A p90 above three times the median | Contention or a cold start |
+| Test | Table | Kind |
+| --- | --- | --- |
+| A test listed there | Failed tests | Broken test |
+| `wait loops`, `gh pr` or `gh run` at 2% or more in `% sub` | Family | Wait inside a worker |
+| `wait loops`, `gh pr` or `gh run` at 2% or more in `% lead` | Family | Wait in the lead |
+| 20 or more runs and `red %` of 50 or more | Command | Check that fails late |
+| A median of 30 seconds or more, run by 10 or more agents | Command | Fixed cost per agent |
+| 20 or more runs, a median of 5 seconds or more and a p90 above three times the median | Command | Contention or a cold start |
 
-State the ceiling for each pick. It is the row's `% work` value, and the fix can save no more than that. Drop a pick under 2%.
+State the ceiling for each pick. It is the row's `% sub` value, or `% lead` for a wait in the lead, and the fix can save no more than that. Drop a pick under 2%. A broken test has no ceiling in the table, so state its agent and red-run counts.
+
+A row with a high `cut` count ran longer than its time shows. A timeout stopped those runs, or the harness moved them to the background.
 
 No row passes: report the top five rows and stop. Do not invent a fix.
 
@@ -40,21 +46,23 @@ Read a few of the real commands and their output in the transcripts before you c
 
 | Kind | Fix to look for |
 | --- | --- |
+| Broken test | Many agents fail the same test, so the project is at fault, not their changes. Reproduce it on the default branch inside an agent worktree, then fix the test or the code. Do this before any other pick, because it also inflates `red %` in the command rows. |
 | Wait inside a worker | The worker hands back when the PR is open or the run has started. The lead watches CI or the run in the background and dispatches a fresh worker only on red. |
-| Check that fails late | A cheaper check that fails first: a type check or compile-only target before the tests, or a narrower test target. Add it as a named target in the Makefile or task runner. |
+| Wait in the lead | The lead starts the watch in the background and keeps dispatching. It reads the result when the notification arrives. |
+| Check that fails late | Read what the red runs printed first. Compile errors want a cheaper check that fails first, such as a type check or a compile-only target before the tests. Real test failures want a narrower test target. Add either as a named target in the Makefile or task runner. |
 | Fixed cost per agent | A cache or warm state shared across worktrees, a narrower target, or a step that runs once per wave instead of once per worker. |
 | Contention or a cold start | Fewer concurrent builds on the host, a shared build cache, or a pre-warmed copy for new worktrees. |
 
 Put the fix where humans get it too: the Makefile, a script, CI config or the build config. Add a line to the project's `CLAUDE.md` or `AGENTS.md` only when the fix is a choice of command that no tool can make for the agent. A fix that needs a decision, a new dependency or a change to shared infrastructure goes to the user as a question with a recommendation.
 
-Dispatch each fix as its own worker with the row as evidence. A fix to how the lead briefs workers needs no worker: apply it to the next brief and say so.
+Dispatch each fix as its own worker with the row as evidence. A fix to how the lead briefs workers or runs its own waits needs no worker: apply it to the next brief or the next wait and say so.
 
 ## 4. Prove
 
-Each fix reports the command's time before and after, from the same cold state on the same host, with the run count. A fix that changes what agents run is proved by this script's next run, so record the row (total minutes, runs, median, red share) in the PR body as the baseline.
+Each fix reports the command's time before and after, from the same cold state on the same host, with the run count. A fix that changes what agents run is proved by this script's next run, so record the row (minutes, runs, median, red share) in the PR body as the baseline.
 
 ## Reply
 
-- The header line and the picked rows, each with its ceiling.
+- The `subagents:` and `leads:` lines and the picked rows, each with its ceiling.
 - Each fix: dispatched, applied to briefs, or asked as a question.
 - Rows that passed a test and were left for the next run.

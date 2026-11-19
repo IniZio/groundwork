@@ -130,7 +130,8 @@ def family_of(key):
         return "wait loops"
     first = key.split(" && ")[0]
     words = first.split()
-    return " ".join(words[:2]) if words[0] in ("cargo", "gh", "make") and len(words) > 1 else words[0]
+    depth = {"gh": 3, "cargo": 2, "make": 2}.get(words[0], 1)
+    return " ".join(words[:depth])
 
 
 def scan(path, seen=None):
@@ -178,10 +179,11 @@ def scan(path, seen=None):
                     if virtual:
                         if b.get("name") == "Bash":
                             start = marker if marker is not None else t
-                            virt_cmd[b.get("id")] = (start, min(max(0.0, t - start), MAX_CMD_S), inp.get("command") or "", True)
+                            secs = min(max(0.0, t - start), MAX_CMD_S)
+                            virt_cmd[b.get("id")] = (start, secs, inp.get("command") or "", 2 if secs >= 0.1 else 0)
                         marker = t
                     elif b.get("name") == "Bash":
-                        real_open[b.get("id")] = (t, None, inp.get("command") or "", not inp.get("run_in_background"))
+                        real_open[b.get("id")] = (t, None, inp.get("command") or "", 0 if inp.get("run_in_background") else 1)
                     elif b.get("name") == "REPL":
                         marker = t if marker is None else max(marker, t)
                 elif b.get("type") == "tool_result":
@@ -196,7 +198,7 @@ def scan(path, seen=None):
                         continue
                     out = (res.get("stdout") or "") + "\n" + (res.get("stderr") or "") if "stdout" in res else text
                     moved = bool(res.get("backgroundTaskId"))
-                    cut = timed and (moved or bool(CUT.search(text[:300]) or CUT.search(text[-300:])))
+                    cut = bool(timed) and (moved or bool(CUT.search(text[:300]) or CUT.search(text[-300:])))
                     red = not cut and not moved and "returnCodeInterpretation" not in res and (
                         bool(b.get("is_error")) or is_red(out))
                     cmds.append((start, secs, command_key(cmd), red, timed, cut, failed_tests(out) if red else ()))
@@ -232,8 +234,8 @@ def main(argv=None):
                 paths.append(p)
     if not paths:
         sys.exit(f"no transcripts newer than {args.days:g} days under: " + ", ".join(map(transcript_dir, args.dirs)))
-    rows = defaultdict(lambda: {"secs": [], "sub": 0.0, "lead": 0.0, "n": 0, "red": 0, "cut": 0, "threads": set()})
-    fail_agents, fail_runs = defaultdict(set), defaultdict(int)
+    rows = defaultdict(lambda: {"secs": [], "est": [], "sub": 0.0, "lead": 0.0, "n": 0, "red": 0, "cut": 0, "threads": set()})
+    fail_agents, fail_tests, fail_runs = defaultdict(set), defaultdict(set), defaultdict(int)
     work, shell, threads = [0.0, 0.0], [0.0, 0.0], [0, 0]
     leads = sorted((p for p in paths if SUB not in p), key=os.path.getmtime)
     subs = [p for p in paths if SUB in p]
@@ -257,10 +259,12 @@ def main(argv=None):
             r["lead" if who else "sub"] += secs
             shell[who] += secs
             if timed:
-                r["secs"].append(secs)
+                r["secs" if timed == 1 else "est"].append(secs)
             for name in failed:
-                fail_agents[name].add(path)
-                fail_runs[name] += 1
+                fail_tests[name.rpartition("::")[0] or name].add(name)
+            for module in {name.rpartition("::")[0] or name for name in failed}:
+                fail_agents[module].add(path)
+                fail_runs[module] += 1
     share = lambda part, whole: 100 * part / whole if whole else 0.0
     ranked = sorted(rows.items(), key=lambda kv: -(kv[1]["sub"] + kv[1]["lead"]))
     print(f"window: last {args.days:g} days | subagents: {threads[0]} | lead sessions: {threads[1]}")
@@ -274,6 +278,8 @@ def main(argv=None):
     print("output and marks the whole command. cut counts runs a timeout stopped or the harness moved to the")
     print("background, so their time is a lower bound. median and p90 leave out runs started in the background.")
     print("a command run from a script has no start time. its time is the gap since the script's previous call.")
+    print("median and p90 use such gaps only when a row has under 5 measured runs, and mark the median with ~.")
+    print("a gap under 0.1 s means the script started the command beside another call, so it is left out.")
     fams = defaultdict(lambda: [0.0, 0.0, 0, 0])
     for key, r in ranked:
         f = fams[family_of(key)]
@@ -292,13 +298,15 @@ def main(argv=None):
     out = []
     for key, r in ranked[:args.top]:
         n = r["n"]
+        measured = len(r["secs"]) >= 5
+        r["secs"] = r["secs"] if measured else r["secs"] + r["est"]
         row = {"command": key, "sub_min": r["sub"] / 60, "sub_pct": share(r["sub"], work[0]),
                "lead_min": r["lead"] / 60, "lead_pct": share(r["lead"], work[1]), "runs": n,
-               "median_s": st.median(r["secs"]) if r["secs"] else 0.0, "p90_s": pct(r["secs"], 0.9), "cut": r["cut"],
+               "median_s": st.median(r["secs"]) if r["secs"] else 0.0, "p90_s": pct(r["secs"], 0.9), "estimated": not measured, "cut": r["cut"],
                "red_pct": 100 * r["red"] / n, "agents": len(r["threads"]), "runs_per_agent": n / len(r["threads"])}
         out.append(row)
         print(f"{key[:45]:46s}{row['sub_min']:9.0f}{row['sub_pct']:7.1f}{row['lead_min']:10.0f}{row['lead_pct']:8.1f}"
-              f"{n:7d}{row['median_s']:10.1f}{row['p90_s']:8.0f}{row['cut']:5d}{row['red_pct']:7.0f}"
+              f"{n:7d}{row['median_s']:9.1f}{'' if measured else '~':1s}{row['p90_s']:8.0f}{row['cut']:5d}{row['red_pct']:7.0f}"
               f"{row['agents']:8d}{row['runs_per_agent']:12.1f}")
     rest = ranked[args.top:]
     if rest:
@@ -307,14 +315,15 @@ def main(argv=None):
     repeated = sorted(((len(v), fail_runs[name], name) for name, v in fail_agents.items() if len(v) >= 3), reverse=True)
     if repeated:
         print()
-        print(f"{'test that failed for 3 or more agents':92s}{'agents':>8}{'red runs':>10}")
+        print(f"{'tests that failed for 3 or more agents, by module':82s}{'tests':>7}{'agents':>8}{'red runs':>10}")
         for agents, runs, name in repeated[:10]:
-            print(f"{name[:91]:92s}{agents:8d}{runs:10d}")
+            print(f"{name[:81]:82s}{len(fail_tests[name]):7d}{agents:8d}{runs:10d}")
     if args.json:
         with open(args.json, "w", encoding="utf-8") as fh:
             json.dump({"days": args.days, "subagents": threads[0], "leads": threads[1], "sub_work_h": work[0] / 3600,
                        "lead_work_h": work[1] / 3600, "sub_shell_h": shell[0] / 3600, "lead_shell_h": shell[1] / 3600,
-                       "rows": out, "repeated_failures": [{"test": n, "agents": a, "red_runs": r} for a, r, n in repeated]},
+                       "rows": out, "repeated_failures": [{"module": n, "tests": sorted(fail_tests[n]), "agents": a, "red_runs": r}
+                                             for a, r, n in repeated]},
                       fh)
 
 

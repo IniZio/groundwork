@@ -59,7 +59,7 @@ export interface ResolvedConfig {
     }
     'pr-body': {
       severity: Severity
-      options: Record<string, never>
+      options: { commentMarkers: readonly string[] }
       sources: { severity: Source }
     }
   }

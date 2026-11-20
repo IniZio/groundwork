@@ -7,9 +7,9 @@ import { readFileSync } from "node:fs";
 import type { Node } from "./lib/tree-sitter.js";
 import { getParser } from "./lib/tree-sitter-loader.js";
 import { readHookInput, type HookInput } from "./lib/hook-input.js";
-import { findPrBodies, findPrComments, type BodyRef } from "./lib/gh-pr-body.js";
+import { findPrBodies, findPrComments, type BodyRef, type PrComment } from "./lib/gh-pr-body.js";
 import { literal } from "./lib/shell-calls.js";
-import { prBodyEnabled } from "./lib/pr-body-enabled.js";
+import { commentMarkers, prBodyEnabled } from "./lib/pr-body-enabled.js";
 import { checkProse, formatFindings, markdownAvailable, NO_MARKDOWN_NOTICE, type MarkdownHost } from "../../rules/pr-body/prose.js";
 import type { HookResult } from "./commit-guard.js";
 
@@ -64,6 +64,19 @@ function denyReason(findings: ReturnType<typeof checkProse>): string {
 const COMMENT_REASON =
   "house-rules: a top-level PR comment is denied because proof and updates belong in the PR body. Edit `## Verification` or `## Scope` with `gh pr edit <n> --body-file <file>`.";
 
+const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Whether every body the comment was given is known and starts with `<!-- <marker>` for an allowed marker. */
+function markedComment(comment: PrComment): boolean {
+  const markers = commentMarkers(comment.cwd);
+  if (markers.length === 0 || comment.bodies.length === 0) return false;
+  const opener = new RegExp(`^\\s*<!--\\s*(?:${markers.map(escapeRegExp).join("|")})(?=\\s|-->)`);
+  return comment.bodies.every((ref) => {
+    const text = bodyText(ref);
+    return text !== null && opener.test(text);
+  });
+}
+
 interface PreToolUseOutput { hookEventName: string; permissionDecision?: "deny"; permissionDecisionReason?: string; additionalContext?: string }
 
 const reply = (hookSpecificOutput: PreToolUseOutput): HookResult => ({ stdout: JSON.stringify({ hookSpecificOutput }) + "\n", stderr: "", exit: 0 });
@@ -93,7 +106,7 @@ export async function check(inp: HookInput, host: MarkdownHost = globalThis): Pr
       if (findings.length === 0) continue;
       return reply({ hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: denyReason(findings) });
     }
-    if (findPrComments(tree.rootNode, command, cwd, parse).some(prBodyEnabled)) {
+    if (findPrComments(tree.rootNode, command, cwd, parse).some((c) => prBodyEnabled(c.cwd) && !markedComment(c))) {
       return reply({ hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: COMMENT_REASON });
     }
     return skipped ? reply({ hookEventName: "PreToolUse", additionalContext: NO_MARKDOWN_NOTICE }) : allow();

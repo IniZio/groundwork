@@ -105,7 +105,7 @@ const ALL_DEFAULTS = {
     },
     'pr-body': {
       severity: 'error',
-      options: {},
+      options: { commentMarkers: [] },
       sources: { severity: 'default' },
     },
   },

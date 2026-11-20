@@ -122,7 +122,7 @@ export function resolveConfigText(repoRoot, text) {
       },
       'pr-body': {
         severity: prBody.value,
-        options: {},
+        options: { commentMarkers: [...(rules['pr-body']?.options?.commentMarkers ?? [])] },
         sources: { severity: prBody.source },
       },
     },

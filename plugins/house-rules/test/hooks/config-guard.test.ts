@@ -434,6 +434,28 @@ describe("warn-only rules: code-smells, no-module-mocking, type-escape-hatches",
   });
 });
 
+describe("pr-body commentMarkers", () => {
+  test("adding a marker is denied as loosening", async () => {
+    setFile(null);
+    await expectDeny(
+      write(cfg({ "pr-body": ["error", { commentMarkers: ["moor-evidence"] }] })),
+      'rules["pr-body"].commentMarkers: adds "moor-evidence"',
+      LOOSEN_MSG,
+    );
+  });
+
+  test("adding a second marker is denied, keeping one is allowed", async () => {
+    setFile(cfg({ "pr-body": ["error", { commentMarkers: ["a"] }] }));
+    await expectDeny(write(cfg({ "pr-body": ["error", { commentMarkers: ["a", "b"] }] })), 'adds "b"');
+    await expectAllow(write(cfg({ "pr-body": ["error", { commentMarkers: ["a"] }] })));
+  });
+
+  test("removing a marker is allowed (tightening)", async () => {
+    setFile(cfg({ "pr-body": ["error", { commentMarkers: ["a"] }] }));
+    await expectAllow(write(cfg({ "pr-body": "error" })));
+  });
+});
+
 describe("effect rule (default off)", () => {
   test("absent to warn allowed (tightening)", async () => {
     setFile(null);

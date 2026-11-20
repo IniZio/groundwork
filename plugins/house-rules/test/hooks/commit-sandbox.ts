@@ -48,11 +48,11 @@ export function pluginHookCommand(event: string, script: string): string[] {
   throw new Error(`plugin.json has no ${event} hook running ${script}`);
 }
 
-export function runPluginHook(event: string, script: string, cwd: string, payload: Record<string, unknown>) {
+export function runPluginHook(event: string, script: string, cwd: string, payload: Record<string, unknown>, env: Record<string, string> = {}) {
   const [cmd, ...args] = pluginHookCommand(event, script);
   const r = spawnSync(cmd, args, {
     cwd,
-    env: { ...GIT_ENV, CLAUDE_PROJECT_DIR: cwd, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT },
+    env: { ...GIT_ENV, CLAUDE_PROJECT_DIR: cwd, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, ...env },
     input: JSON.stringify({ hook_event_name: event, cwd, session_id: "test", ...payload }),
     encoding: "utf8",
   });

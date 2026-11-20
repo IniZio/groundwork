@@ -57,7 +57,7 @@ export const RULE_OPTION_KEYS: {
   readonly "require-safety-comment-for-type-assertion": readonly [];
   readonly "require-readable-spacing": readonly [];
   readonly "silent-early-return-in-test": readonly [];
-  readonly "pr-body": readonly [];
+  readonly "pr-body": readonly ["commentMarkers"];
 };
 export type Tier = "product" | "working" | "ephemeral";
 export const TIERS: readonly ["product", "working", "ephemeral"];

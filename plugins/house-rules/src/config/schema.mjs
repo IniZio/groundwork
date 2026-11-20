@@ -43,7 +43,7 @@ export const RULE_OPTION_KEYS = Object.freeze({
   "require-safety-comment-for-type-assertion": Object.freeze([]),
   "require-readable-spacing": Object.freeze([]),
   "silent-early-return-in-test": Object.freeze([]),
-  "pr-body": Object.freeze([]),
+  "pr-body": Object.freeze(["commentMarkers"]),
 });
 export const TIERS = Object.freeze(["product", "working", "ephemeral"]);
 export const TYPE_KEYS = Object.freeze([

@@ -92,9 +92,14 @@ const PULL_WRITE_ENDPOINT = /^\/?repos\/[^/]+\/[^/]+\/pulls(?:\/[^/?]+)?\/?(?:\?
 const BODY_FIELD = /^(["']?)(?:--(?:raw-)?field=|-[fF])?(["']?)body=/;
 
 function apiBodies(call: ProgramCall, args: Node[]): BodyRef[] {
-  const { cmd, cwd, nested } = call;
   const api = parseApi(args);
   if (api.endpoint === null || !PULL_WRITE_ENDPOINT.test(api.endpoint) || (api.method !== "PATCH" && api.method !== "POST")) return [];
+  return payloadBodies(call, api);
+}
+
+/** The `body` of a `gh api` request: each body field, and the `--input` payload. */
+function payloadBodies(call: ProgramCall, api: ApiCall): BodyRef[] {
+  const { cmd, cwd, nested } = call;
   const refs: Array<BodyRef | null> = [];
   for (const { node, readsFiles } of api.fields) {
     const m = BODY_FIELD.exec(node.text);
@@ -125,18 +130,19 @@ export function findPrBodies(root: Node, source: string, startCwd: string, parse
 
 const ISSUE_COMMENTS = /^\/?repos\/[^/]+\/[^/]+\/issues\/[^/]+\/comments\/?(?:\?.*)?$/;
 
-/** Whether a `gh api` call POSTs to `repos/<o>/<r>/issues/<n>/comments`, which is how gh posts a top-level PR comment. */
-function postsIssueComment(args: Node[]): boolean {
-  const { endpoint, method } = parseApi(args);
-  return endpoint !== null && ISSUE_COMMENTS.test(endpoint) && method === "POST";
-}
+/** A top-level PR comment and the bodies it was given. No bodies means gh asks for one in an editor or prompt. */
+export interface PrComment { cwd: string; bodies: BodyRef[] }
 
-/** The cwd of every top-level PR comment: `gh pr comment`, or a `gh api` POST to an issue's comments. */
-export function findPrComments(root: Node, source: string, startCwd: string, parse: Parse): string[] {
-  const cwds: string[] = [];
-  for (const { nodes, cwd } of programCalls("gh", root, source, startCwd, parse)) {
-    const word = (i: number) => (nodes[i] ? literal(nodes[i] as Node) : null);
-    if ((word(1) === "pr" && word(2) === "comment") || (word(1) === "api" && postsIssueComment(nodes.slice(2)))) cwds.push(cwd);
+/** Every top-level PR comment: `gh pr comment`, or a `gh api` POST to `repos/<o>/<r>/issues/<n>/comments`, which is how gh posts one. */
+export function findPrComments(root: Node, source: string, startCwd: string, parse: Parse): PrComment[] {
+  const comments: PrComment[] = [];
+  for (const call of programCalls("gh", root, source, startCwd, parse)) {
+    const word = (i: number) => (call.nodes[i] ? literal(call.nodes[i] as Node) : null);
+    if (word(1) === "pr" && word(2) === "comment") comments.push({ cwd: call.cwd, bodies: callBodies(call, call.nodes.slice(3)) });
+    else if (word(1) === "api") {
+      const api = parseApi(call.nodes.slice(2));
+      if (api.endpoint !== null && ISSUE_COMMENTS.test(api.endpoint) && api.method === "POST") comments.push({ cwd: call.cwd, bodies: payloadBodies(call, api) });
+    }
   }
-  return cwds;
+  return comments;
 }

@@ -492,7 +492,7 @@ describe("exported constants", () => {
       "require-safety-comment-for-type-assertion": [],
       "require-readable-spacing": [],
       "silent-early-return-in-test": [],
-      "pr-body": [],
+      "pr-body": ["commentMarkers"],
     });
     expect(TIERS).toEqual(["product", "working", "ephemeral"]);
     expect(TYPE_KEYS).toEqual([

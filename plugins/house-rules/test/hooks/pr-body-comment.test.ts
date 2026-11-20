@@ -3,14 +3,16 @@ import { makeRepo, runPluginHook } from "./commit-sandbox.js";
 
 let enabled: string;
 let disabled: string;
+let configured: string;
 
 beforeAll(() => {
   enabled = makeRepo({ rules: { "pr-body": "error" } });
   disabled = makeRepo({ rules: { "pr-body": "off" } });
+  configured = makeRepo({ rules: { "pr-body": ["error", { commentMarkers: ["moor-evidence"] }] } });
 });
 
-function decide(repo: string, command: string) {
-  const r = runPluginHook("PreToolUse", "pr-body-guard.ts", repo, { tool_name: "Bash", tool_input: { command } });
+function decide(repo: string, command: string, env: Record<string, string> = {}) {
+  const r = runPluginHook("PreToolUse", "pr-body-guard.ts", repo, { tool_name: "Bash", tool_input: { command } }, env);
   if (r.stdout.trim() === "") return { decision: "allow", reason: "" };
   const out = JSON.parse(r.stdout).hookSpecificOutput;
   return { decision: (out.permissionDecision ?? "allow") as string, reason: (out.permissionDecisionReason ?? "") as string };
@@ -62,5 +64,47 @@ describe("pr-body guard: top-level PR comments", () => {
     expect(decide(disabled, 'gh pr comment 940 --body "proof"').decision).toBe("allow");
     expect(decide(enabled, `gh api ${ISSUE_COMMENTS} -f body=proof`).decision).toBe("deny");
     expect(decide(disabled, `gh api ${ISSUE_COMMENTS} -f body=proof`).decision).toBe("allow");
+  });
+});
+
+describe("pr-body guard: marked comments", () => {
+  const MARKED = "<!-- moor-evidence sha=abc123 -->\nEvidence: https://moor.example/runs/1";
+  const ENV = { HOUSE_RULES_PR_COMMENT_MARKERS: "other, moor-evidence" };
+
+  test("the deny reason never names the marker escape", () => {
+    const r = decide(enabled, 'gh pr comment 940 --body "proof"');
+    expect(r.decision).toBe("deny");
+    expect(r.reason).not.toMatch(/marker|HOUSE_RULES|<!--/i);
+  });
+
+  test("a marker from the env allows a marked comment in every form", () => {
+    expect(decide(enabled, `gh pr comment 940 --body '${MARKED}'`, ENV).decision).toBe("allow");
+    expect(decide(enabled, `gh pr comment 940 -F - <<'EOF'\n${MARKED}\nEOF`, ENV).decision).toBe("allow");
+    expect(decide(enabled, `gh api ${ISSUE_COMMENTS} -f body='${MARKED}'`, ENV).decision).toBe("allow");
+    expect(decide(enabled, `gh api ${ISSUE_COMMENTS} --input - <<'EOF'\n${JSON.stringify({ body: MARKED })}\nEOF`, ENV).decision).toBe("allow");
+  });
+
+  test("a marker from .house-rules.json allows a marked comment without the env", () => {
+    expect(decide(configured, `gh pr comment 940 --body '${MARKED}'`).decision).toBe("allow");
+    expect(decide(configured, 'gh pr comment 940 --body "proof"').decision).toBe("deny");
+  });
+
+  test("a marked comment is denied when no marker is configured", () => {
+    expect(decide(enabled, `gh pr comment 940 --body '${MARKED}'`).decision).toBe("deny");
+    expect(decide(enabled, `gh api ${ISSUE_COMMENTS} -f body='${MARKED}'`).decision).toBe("deny");
+  });
+
+  test("an unmarked, wrongly marked or unknown body is still denied with the env set", () => {
+    expect(decide(enabled, 'gh pr comment 940 --body "proof"', ENV).decision).toBe("deny");
+    expect(decide(enabled, "gh pr comment 940 --body 'proof <!-- moor-evidence -->'", ENV).decision).toBe("deny");
+    expect(decide(enabled, "gh pr comment 940 --body '<!-- moor-evidence-x -->'", ENV).decision).toBe("deny");
+    expect(decide(enabled, 'gh pr comment 940 --body "$BODY"', ENV).decision).toBe("deny");
+    expect(decide(enabled, "gh pr comment 940", ENV).decision).toBe("deny");
+    expect(decide(enabled, "gh pr comment 940 --body-file missing.md", ENV).decision).toBe("deny");
+  });
+
+  test("one unmarked comment in a command denies the whole command", () => {
+    const cmd = `gh pr comment 1 --body '${MARKED}' && gh pr comment 2 --body proof`;
+    expect(decide(enabled, cmd, ENV).decision).toBe("deny");
   });
 });

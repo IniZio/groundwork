@@ -64,6 +64,9 @@ function denyReason(findings: ReturnType<typeof checkProse>): string {
 const COMMENT_REASON =
   "house-rules: a top-level PR comment is denied because proof and updates belong in the PR body. Edit `## Verification` or `## Scope` with `gh pr edit <n> --body-file <file>`.";
 
+const FILE_HINT =
+  " If this comment's body comes from stdin or from a file the same command writes, the hook cannot read it. Write the body to a file in an earlier call, then pass it with `-F body=@<file>` or `--body-file <file>`.";
+
 const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** The literal start of an inline or heredoc body whose tail holds an expansion, such as the head sha in `"<!-- m sha=$SHA -->"`. */
@@ -76,6 +79,10 @@ function literalPrefix(ref: BodyRef): string | null {
 }
 
 /** Whether every body the comment was given starts with `<!-- <marker>` for an allowed marker. Only that start is checked, so an expansion after it is fine. */
+function unreadableBody(comment: PrComment): boolean {
+  return commentMarkers(comment.cwd).length > 0 && (comment.bodies.length === 0 || comment.bodies.some((ref) => literalPrefix(ref) === null));
+}
+
 function markedComment(comment: PrComment): boolean {
   const markers = commentMarkers(comment.cwd);
   if (markers.length === 0 || comment.bodies.length === 0) return false;
@@ -115,8 +122,10 @@ export async function check(inp: HookInput, host: MarkdownHost = globalThis): Pr
       if (findings.length === 0) continue;
       return reply({ hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: denyReason(findings) });
     }
-    if (findPrComments(tree.rootNode, command, cwd, parse).some((c) => prBodyEnabled(c.cwd) && !markedComment(c))) {
-      return reply({ hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: COMMENT_REASON });
+    const refused = findPrComments(tree.rootNode, command, cwd, parse).find((c) => prBodyEnabled(c.cwd) && !markedComment(c));
+    if (refused) {
+      const reason = unreadableBody(refused) ? COMMENT_REASON + FILE_HINT : COMMENT_REASON;
+      return reply({ hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason });
     }
     return skipped ? reply({ hookEventName: "PreToolUse", additionalContext: NO_MARKDOWN_NOTICE }) : allow();
   } catch {

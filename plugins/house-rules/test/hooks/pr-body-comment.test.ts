@@ -80,6 +80,20 @@ describe("pr-body guard: marked comments", () => {
     expect(r.reason).not.toMatch(/marker|HOUSE_RULES|<!--/i);
   });
 
+  test("a body the hook cannot read is denied with the file route, and only where comments can pass", () => {
+    const route = "-F body=@<file>";
+    const piped = `jq -n '{body: "x"}' | gh api ${ISSUE_COMMENTS} --input -`;
+    const sameCommand = `echo x > /tmp/hr-nope-body.md && gh api ${ISSUE_COMMENTS} -F body=@/tmp/hr-nope-body.md`;
+    for (const command of [piped, sameCommand]) {
+      const r = decide(configured, command);
+      expect(r.decision).toBe("deny");
+      expect(r.reason).toContain(route);
+      expect(r.reason).not.toMatch(/marker|HOUSE_RULES|<!--/i);
+      expect(decide(enabled, command).reason).not.toContain(route);
+    }
+    expect(decide(configured, `gh api ${ISSUE_COMMENTS} -f body=proof`).reason).not.toContain(route);
+  });
+
   test("a marker from the env allows a marked comment in every form", () => {
     expect(decide(enabled, `gh pr comment 940 --body '${MARKED}'`, ENV).decision).toBe("allow");
     expect(decide(enabled, `gh pr comment 940 -F - <<'EOF'\n${MARKED}\nEOF`, ENV).decision).toBe("allow");

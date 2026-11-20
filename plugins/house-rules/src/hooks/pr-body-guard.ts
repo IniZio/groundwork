@@ -66,13 +66,22 @@ const COMMENT_REASON =
 
 const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** Whether every body the comment was given is known and starts with `<!-- <marker>` for an allowed marker. */
+/** The literal start of an inline or heredoc body whose tail holds an expansion, such as the head sha in `"<!-- m sha=$SHA -->"`. */
+function literalPrefix(ref: BodyRef): string | null {
+  const known = bodyText(ref);
+  if (known !== null) return known;
+  if (ref.kind === "inline") return ref.text.replace(/^["']/, "").split(/[$`]/)[0] ?? "";
+  const heredoc = ref.kind === "stdin" ? ref.heredoc : null;
+  return heredoc ? heredoc.text.split(/[$`]/)[0] ?? "" : null;
+}
+
+/** Whether every body the comment was given starts with `<!-- <marker>` for an allowed marker. Only that start is checked, so an expansion after it is fine. */
 function markedComment(comment: PrComment): boolean {
   const markers = commentMarkers(comment.cwd);
   if (markers.length === 0 || comment.bodies.length === 0) return false;
   const opener = new RegExp(`^\\s*<!--\\s*(?:${markers.map(escapeRegExp).join("|")})(?=\\s|-->)`);
   return comment.bodies.every((ref) => {
-    const text = bodyText(ref);
+    const text = literalPrefix(ref);
     return text !== null && opener.test(text);
   });
 }

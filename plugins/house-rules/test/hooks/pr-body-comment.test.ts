@@ -1,4 +1,7 @@
 import { describe, test, expect, beforeAll } from "bun:test";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { makeRepo, runPluginHook } from "./commit-sandbox.js";
 
 let enabled: string;
@@ -101,6 +104,26 @@ describe("pr-body guard: marked comments", () => {
     expect(decide(enabled, 'gh pr comment 940 --body "$BODY"', ENV).decision).toBe("deny");
     expect(decide(enabled, "gh pr comment 940", ENV).decision).toBe("deny");
     expect(decide(enabled, "gh pr comment 940 --body-file missing.md", ENV).decision).toBe("deny");
+  });
+
+  test("an expansion after the marker is allowed, one inside or before it is denied", () => {
+    expect(decide(enabled, 'gh pr comment 940 --body "<!-- moor-evidence sha=$SHA -->\nsee $URL"', ENV).decision).toBe("allow");
+    expect(decide(enabled, 'gh pr comment 940 -F - <<EOF\n<!-- moor-evidence sha=$SHA -->\nEOF', ENV).decision).toBe("allow");
+    expect(decide(enabled, `gh api ${ISSUE_COMMENTS} -f body="<!-- moor-evidence $SHA -->"`, ENV).decision).toBe("allow");
+    expect(decide(enabled, 'gh pr comment 940 --body "<!-- moor-$KIND -->"', ENV).decision).toBe("deny");
+    expect(decide(enabled, 'gh pr comment 940 --body "$PREFIX<!-- moor-evidence -->"', ENV).decision).toBe("deny");
+    expect(decide(enabled, 'gh pr comment 940 -F - <<EOF\n$X<!-- moor-evidence -->\nEOF', ENV).decision).toBe("deny");
+  });
+
+  test("a marked body read from a file is allowed", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hr-marked-"));
+    writeFileSync(join(dir, "b.md"), MARKED);
+    writeFileSync(join(dir, "p.json"), JSON.stringify({ body: MARKED }));
+    writeFileSync(join(dir, "u.md"), "proof");
+    expect(decide(enabled, `gh pr comment 940 --body-file ${join(dir, "b.md")}`, ENV).decision).toBe("allow");
+    expect(decide(enabled, `gh api ${ISSUE_COMMENTS} -F body=@${join(dir, "b.md")}`, ENV).decision).toBe("allow");
+    expect(decide(enabled, `gh api ${ISSUE_COMMENTS} --input ${join(dir, "p.json")}`, ENV).decision).toBe("allow");
+    expect(decide(enabled, `gh pr comment 940 --body-file ${join(dir, "u.md")}`, ENV).decision).toBe("deny");
   });
 
   test("one unmarked comment in a command denies the whole command", () => {

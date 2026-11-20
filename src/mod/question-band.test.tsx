@@ -158,3 +158,13 @@ test('an answered question re-asked verbatim in a later turn gets a new number',
   await reply($, 'Ship it? Recommend: yes')
   expect(await shown($)).toEqual(['❓ #2 Ship it?'])
 })
+
+test('a prompt that names /newman-mode without running it is told to load the skill', async ($, on) => {
+  const { submitted } = engine(on)
+  const load = /read \S+\/skills\/newman-mode\/SKILL\.md in full/
+  await $.prompt.submit(typed(' /newman-mode clean up the boxes'))
+  await $.prompt.submit(typed('\n\n<pasted_content id="c3c8">\n/groundwork:newman-mode clean up\n</pasted_content id="c3c8">\n\n- more'))
+  await $.prompt.submit(typed('why did /newman-mode not load?'))
+  await $.prompt.submit(typed('/newman-mode-extra is another name'))
+  expect(submitted.map(s => load.test(s))).toEqual([true, true, false, false])
+})

@@ -30,6 +30,17 @@ async function answer($: Dollar, prompt: string): Promise<string> {
   ].join('\n')
 }
 
+const MODE_TYPED = /^[ \t]*(?:<pasted_content[^>]*>[ \t]*)?\/(?:groundwork:)?newman-mode(?![\w-])/m
+const ROOT = new URL('../..', import.meta.url).pathname.replace(/\/$/, '')
+const LOAD_MODE = [
+  '(This prompt names /groundwork:newman-mode, but no command ran, so the skill is not loaded and the Skill tool cannot load it.',
+  `Before anything else, read ${ROOT}/skills/newman-mode/SKILL.md in full.`,
+  `Then run \`bun "${ROOT}/scripts/poteto-mode.ts" "${ROOT}"\` and read all of its output, which is the base that file layers on.`,
+  'Follow both for the rest of this session.)',
+].join(' ')
+
+const withMode = (text: string): string => (MODE_TYPED.test(text) ? `${text}\n${LOAD_MODE}` : text)
+
 function close(l: QuestionLedger, closed: Question[]): QuestionLedger {
   const ids = new Set(closed.map(q => q.id))
   const closedMidTurn = l.working === true ? [...(l.closedMidTurn ?? []), ...closed] : l.closedMidTurn
@@ -70,7 +81,7 @@ export const register: Register = on => {
   })
 
   on('prompt.submit', async ($, e, next) =>
-    e.command !== undefined || e.isMeta === true ? next(e) : next({ ...e, text: await answer($, e.text) }),
+    e.command !== undefined || e.isMeta === true ? next(e) : next({ ...e, text: withMode(await answer($, e.text)) }),
   )
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
